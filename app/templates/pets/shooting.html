@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}海滩防线{% endblock %}
+{% block page_shell_class %}page-shell-wide{% endblock %}
+
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', path='shooting-game.css') }}">
+{% endblock %}
+
+{% block content %}
+<section
+  class="shooting-page"
+  id="shooting-game-page"
+  data-pet-id="{{ pet.id }}"
+  data-pet-name="{{ pet.name }}"
+  data-csrf="{{ csrf_token }}"
+  data-claim-url="/pets/{{ pet.id }}/mini-games/claim"
+  data-return-url="{{ return_to_dashboard }}"
+>
+  <div class="shooting-page-topbar">
+    <div>
+      <p class="eyebrow">独立小游戏</p>
+      <h1>海滩防线</h1>
+      <p class="lead">切换第一 / 第三人称，和友军一起守住 20 秒海滩登陆线。</p>
+    </div>
+    <a class="secondary-link return-link" href="{{ return_to_dashboard }}">返回控制台</a>
+  </div>
+
+  <div class="shooting-page-shell">
+    <aside class="shooting-side-rail">
+      <section class="shooting-side-card">
+        <span class="side-label">当前宠物</span>
+        <strong>{{ pet.name }}</strong>
+        <small>{{ pet.species }} / {{ pet.stage }} / {{ pet.personality }}</small>
+      </section>
+
+      <section class="shooting-side-card">
+        <span class="side-label">战斗设置</span>
+        <div class="setting-row">
+          <label for="shooting-difficulty">难度</label>
+          <select id="shooting-difficulty" data-shooting-difficulty>
+            <option value="easy">简单</option>
+            <option value="normal" selected>标准</option>
+            <option value="hard">困难</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <label for="shooting-weapon">武器</label>
+          <select id="shooting-weapon" data-shooting-weapon>
+            <option value="machine_gun" selected>重机枪</option>
+            <option value="coastal_cannon">岸防炮</option>
+          </select>
+        </div>
+        <div class="setting-row">
+          <label>视角</label>
+          <div class="view-switcher">
+            <button type="button" class="view-switch is-active" data-view-mode="first">第一人称</button>
+            <button type="button" class="view-switch" data-view-mode="third">第三人称</button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <label>开火方式</label>
+          <label class="auto-fire-toggle">
+            <input type="checkbox" data-auto-fire>
+            <span>自动开火（触屏推荐）</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="shooting-side-card">
+        <span class="side-label">操作提示</span>
+        <ul class="side-hint-list">
+          <li>桌面：鼠标瞄准，左键开火，WASD 移动，1/2 切枪</li>
+          <li>触屏：拖动准星，或开启自动开火只负责瞄准</li>
+          <li>第一人称更沉浸，第三人称能看到宠物操作武器</li>
+        </ul>
+      </section>
+
+      <section class="shooting-side-card">
+        <span class="side-label">战场说明</span>
+        <div class="battle-note-grid">
+          <span>友军会自动支援，但最多只处理三分之一敌军</span>
+          <span>敌军推进到半场后会开始开火反击</span>
+          <span>岸防炮适合清理密集推进队列</span>
+        </div>
+      </section>
+    </aside>
+
+    <section class="shooting-stage-card">
+      <div class="battle-top-hud">
+        <div class="hud-block">
+          <span>击倒</span>
+          <strong data-battle-kills>0</strong>
+        </div>
+        <div class="hud-block emphasis">
+          <span>防线完整度</span>
+          <strong data-battle-integrity>100</strong>
+        </div>
+        <div class="hud-block">
+          <span>友军存活</span>
+          <strong data-battle-allies>3</strong>
+        </div>
+        <div class="hud-block timer">
+          <span>倒计时</span>
+          <strong data-battle-timer>20.0</strong>
+        </div>
+        <div class="hud-block">
+          <span>得分</span>
+          <strong data-battle-score>0</strong>
+        </div>
+      </div>
+
+      <div class="battle-stage" data-battle-stage>
+        <canvas class="battle-canvas" data-battle-canvas width="1440" height="810"></canvas>
+        <div class="battle-vignette"></div>
+        <div class="battle-reticle" data-battle-reticle>
+          <span class="reticle-ring"></span>
+          <span class="reticle-line reticle-x"></span>
+          <span class="reticle-line reticle-y"></span>
+          <span class="reticle-dot"></span>
+        </div>
+        <div class="battle-flash" data-battle-flash></div>
+        <div class="battle-scene-chip" data-battle-view-label>第一人称阵地</div>
+        <div class="battle-weapon-pill" data-battle-weapon-pill>重机枪 / 连发压制</div>
+        <div class="battle-meter-card">
+          <span data-battle-meter-label>枪管热量</span>
+          <div class="battle-meter-track"><span data-battle-meter-fill></span></div>
+        </div>
+        <div class="battle-message" data-battle-message>敌军运输艇正在逼近，友军已进入防守位。</div>
+        <button type="button" class="battle-fire-button" data-battle-fire>按住开火</button>
+
+        <div class="battle-overlay" data-battle-start>
+          <div class="battle-overlay-card">
+            <p class="eyebrow">海滩防线</p>
+            <h2>独立战斗页已就绪</h2>
+            <p>你将和 3 名友军一起守住海滩。敌军会登陆、冲锋、瞄准并反击。</p>
+            <div class="battle-brief-list">
+              <span>重机枪：扫射压制</span>
+              <span>岸防炮：范围爆破</span>
+              <span>第三人称可看到宠物操作武器</span>
+            </div>
+            <button type="button" class="primary-link battle-start-button" data-battle-start-button>开始防守</button>
+          </div>
+        </div>
+
+        <div class="battle-overlay" data-battle-end hidden>
+          <div class="battle-overlay-card end-state">
+            <p class="eyebrow">战斗结束</p>
+            <h2 data-battle-end-title>正在结算</h2>
+            <p data-battle-end-summary>正在统计你的击倒、友军存活和防线完整度。</p>
+            <div class="end-actions">
+              <button type="button" class="primary-link battle-start-button" data-battle-replay>再来一局</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="battle-footer-strip">
+        <p class="battle-status" data-battle-status>默认第一人称。按武器和视角切换后再开始战斗。</p>
+        <div class="battle-result" data-battle-result>本页结算后会直接把金币记回宠物和控制台账本。</div>
+      </div>
+    </section>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+  <script type="module" src="{{ url_for('static', path='shooting-game.js') }}"></script>
+{% endblock %}

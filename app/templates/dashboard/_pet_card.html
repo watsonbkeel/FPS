@@ -1,0 +1,346 @@
+{% set pet_state = 'sleeping' if pet.is_sleeping else 'sick' if pet.health <= 35 else 'hungry' if pet.hunger >= 70 else 'happy' if pet.mood >= 78 else 'tired' if pet.energy <= 30 else 'idle' %}
+{% set pet_tone = 'mint' if pet.color == '薄荷绿' else 'cream' if pet.color == '奶油白' else 'sky' if pet.color == '晴空蓝' else 'pink' %}
+{% set pet_species = 'fluff' if pet.species == '绒球兽' else 'droplet' if pet.species == '水滴兽' else 'basic' %}
+{% set pet_message = '正在香香睡觉' if pet_state == 'sleeping' else '身体不太舒服，需要照顾' if pet_state == 'sick' else '已经饿了，想吃东西' if pet_state == 'hungry' else '心情很好，正想撒欢' if pet_state == 'happy' else '有点困，动作慢下来' if pet_state == 'tired' else '状态平稳，慢慢成长中' %}
+{% set inv = inventory or {} %}
+{% set hosting_summary = (hosting_summary_by_pet or {}).get(pet.id, '尚未执行托管动作') %}
+{% set latest_coin_event = latest_coin_event_by_pet.get(pet.id) %}
+{% set coin_delta = latest_coin_event.metadata_json.get('coin_delta', 0) if latest_coin_event else 0 %}
+{% set fullness = 100 - pet.hunger %}
+{% set pet_asset = url_for('static', path='assets/pet_lemon_sprout.svg') if pet.appearance_style == 'classic' else url_for('static', path='assets/pet_mint_dumpling.svg') if pet.appearance_style == 'goggles' else url_for('static', path='assets/pet_ocean_bobo.svg') if pet.appearance_style == 'star' else url_for('static', path='assets/pet_berry_pink.svg') %}
+{% set need_ns = namespace(best_key='play', best_score=999) %}
+{% if fullness >= 90 and pet.health >= 90 and pet.cleanliness >= 90 and pet.energy >= 90 and pet.mood >= 90 %}
+  {% set recommend_key = 'play' %}
+  {% set recommend_score = pet.mood %}
+{% else %}
+  {% for key, score in [('feed', fullness), ('heal', pet.health), ('clean', pet.cleanliness), ('sleep', pet.energy), ('play', pet.mood)] %}
+    {% if score < need_ns.best_score %}
+      {% set need_ns.best_key = key %}
+      {% set need_ns.best_score = score %}
+    {% endif %}
+  {% endfor %}
+  {% set recommend_key = need_ns.best_key %}
+  {% set recommend_score = need_ns.best_score %}
+{% endif %}
+{% set recommend_action = '立即治病' if recommend_key == 'heal' else '先喂食' if recommend_key == 'feed' else '先清理' if recommend_key == 'clean' else '安排睡觉' if recommend_key == 'sleep' else '陪它玩耍' %}
+{% set recommend_reason = '健康值是当前最低项，先做恢复最稳妥。' if recommend_key == 'heal' else '饱腹值最低，先补食物最划算。' if recommend_key == 'feed' else '清洁值最低，先清理避免继续掉状态。' if recommend_key == 'clean' else '精力最低，先睡觉恢复行动力。' if recommend_key == 'sleep' else ('所有主要状态都很高，默认推荐玩耍。' if fullness >= 90 and pet.health >= 90 and pet.cleanliness >= 90 and pet.energy >= 90 and pet.mood >= 90 else '当前心情最低，玩耍最能直接改善状态。') %}
+{% set alert_tone = 'danger' if recommend_score <= 35 else 'warning' if recommend_score <= 60 else 'soft' %}
+{% set inventory_ns = namespace(food_count=0, medicine_count=0, energy_count=0, gift_count=0, first_food_id=None, first_food_name='') %}
+{% for inv_item in inv.values() %}
+  {% if inv_item.quantity > 0 and inv_item.item.category == 'food' %}
+    {% set inventory_ns.food_count = inventory_ns.food_count + inv_item.quantity %}
+    {% if inventory_ns.first_food_id is none %}
+      {% set inventory_ns.first_food_id = inv_item.item.id %}
+      {% set inventory_ns.first_food_name = inv_item.item.name %}
+    {% endif %}
+  {% elif inv_item.quantity > 0 and inv_item.item.category == 'medicine' %}
+    {% if (inv_item.item.effect_json or {}).get('energy', 0) > 0 %}
+      {% set inventory_ns.energy_count = inventory_ns.energy_count + inv_item.quantity %}
+    {% else %}
+      {% set inventory_ns.medicine_count = inventory_ns.medicine_count + inv_item.quantity %}
+    {% endif %}
+  {% elif inv_item.quantity > 0 and inv_item.item.category == 'gift' %}
+    {% set inventory_ns.gift_count = inventory_ns.gift_count + inv_item.quantity %}
+  {% endif %}
+{% endfor %}
+<article id="pet-card-{{ pet.id }}" class="pet-card pet-card-showcase" data-pet-card data-pet-id="{{ pet.id }}">
+  <div class="section-head tight">
+    <div>
+      <h2>{{ pet.name }}</h2>
+      <p>{{ pet.stage }} / {{ pet.growth_path }} / {{ gender_options[pet.gender] }} / {{ appearance_options[pet.appearance_style] }}</p>
+    </div>
+    <span class="pill">{{ '存活' if pet.is_alive else '离线' }}</span>
+  </div>
+  <div class="pet-portrait tone-{{ pet_tone }} species-{{ pet_species }} gender-{{ pet.gender }} appearance-{{ pet.appearance_style }} stage-{{ pet.stage }} state-{{ pet_state }}" data-base-message="{{ pet_message }}" data-action-seed="{{ pet.id }}">
+    <span class="pet-action-badge">主动打招呼</span>
+    <div class="pet-skyline"></div>
+    <div class="pet-shadow"></div>
+    <div class="pet-sprite-wrap">
+      <div class="pet-sprite" aria-hidden="true">
+        <span class="pet-orbit orbit-left"></span>
+        <span class="pet-orbit orbit-right"></span>
+        <div class="pet-asset-shell">
+          <span class="pet-stage-chip">{{ {'egg':'蛋期','baby':'幼年','child':'成长期','teen':'少年期','adult':'成年期'}[pet.stage] }}</span>
+          <img class="pet-asset-image" src="{{ pet_asset }}" alt="{{ pet.name }} 的主视觉形象">
+        </div>
+      </div>
+    </div>
+  </div>
+  {% if action_notice %}
+    <div class="card-notice notice-{{ action_notice_level or 'success' }}">{{ action_notice }}</div>
+  {% endif %}
+  <div class="pet-console-shell">
+    <div class="console-alert alert-{{ alert_tone }}">
+      <div>
+        <strong>当前建议：{{ recommend_action }}</strong>
+        <p>{{ recommend_reason }}</p>
+      </div>
+      <span class="console-alert-pill">{{ '高优先级' if alert_tone == 'danger' else '建议处理' if alert_tone == 'warning' else '状态稳定' }}</span>
+    </div>
+
+    <section class="console-section console-actions-section">
+      <div class="console-section-head">
+        <strong>照顾操作</strong>
+        <span class="console-section-tag">现在点击后更容易看到宠物反应</span>
+      </div>
+
+      <div class="inventory-quick-strip">
+        <span class="inventory-chip {{ 'has-items' if inventory_ns.food_count else '' }}">食物 {{ inventory_ns.food_count }}</span>
+        <span class="inventory-chip {{ 'has-items' if inventory_ns.medicine_count else '' }}">药剂 {{ inventory_ns.medicine_count }}</span>
+        <span class="inventory-chip {{ 'has-items' if inventory_ns.energy_count else '' }}">精力丸 {{ inventory_ns.energy_count }}</span>
+        <span class="inventory-chip {{ 'has-items' if inventory_ns.gift_count else '' }}">礼物 {{ inventory_ns.gift_count }}</span>
+        {% if inventory_ns.first_food_name %}
+          <span class="inventory-bridge">刚买的 {{ inventory_ns.first_food_name }} 已可直接喂食</span>
+        {% endif %}
+      </div>
+
+      <div class="dashboard-care-actions">
+        <button type="button" class="care-action-btn is-toggle {{ 'is-recommended' if recommend_key == 'feed' else '' }}" data-config-toggle="#panel-feed-{{ pet.id }}" aria-expanded="false" aria-controls="panel-feed-{{ pet.id }}">
+          <span class="care-button-label">喂食</span>
+          <span class="care-button-meta">{{ '建议动作' if recommend_key == 'feed' else ('可用 ' ~ inventory_ns.food_count ~ ' 份食物' if inventory_ns.food_count else '切换食物') }}</span>
+        </button>
+
+        <form method="post" action="/pets/{{ pet.id }}/play" hx-post="/pets/{{ pet.id }}/play" hx-target="#pet-card-{{ pet.id }}" hx-swap="outerHTML" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="return_to" value="/dashboard">
+          <button type="submit" class="care-action-btn {{ 'is-recommended' if recommend_key == 'play' else '' }}">
+            <span class="care-button-label">玩耍</span>
+            <span class="care-button-meta">{{ '建议动作' if recommend_key == 'play' else '赚金币' }}</span>
+          </button>
+        </form>
+
+        <form method="post" action="/pets/{{ pet.id }}/clean" hx-post="/pets/{{ pet.id }}/clean" hx-target="#pet-card-{{ pet.id }}" hx-swap="outerHTML" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="return_to" value="/dashboard">
+          <button type="submit" class="care-action-btn {{ 'is-recommended' if recommend_key == 'clean' else '' }}">
+            <span class="care-button-label">清理</span>
+            <span class="care-button-meta">{{ '建议动作' if recommend_key == 'clean' else '拉回状态' }}</span>
+          </button>
+        </form>
+
+        {% if inventory_ns.energy_count %}
+          <button type="button" class="care-action-btn is-toggle {{ 'is-recommended' if recommend_key == 'sleep' else '' }}" data-config-toggle="#panel-sleep-{{ pet.id }}" aria-expanded="false" aria-controls="panel-sleep-{{ pet.id }}">
+            <span class="care-button-label">睡觉</span>
+            <span class="care-button-meta">{{ '建议动作' if recommend_key == 'sleep' else ('可用 ' ~ inventory_ns.energy_count ~ ' 个精力丸' if inventory_ns.energy_count else '恢复精力') }}</span>
+          </button>
+        {% else %}
+          <form method="post" action="/pets/{{ pet.id }}/sleep" hx-post="/pets/{{ pet.id }}/sleep" hx-target="#pet-card-{{ pet.id }}" hx-swap="outerHTML" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="return_to" value="/dashboard">
+            <button type="submit" class="care-action-btn {{ 'is-recommended' if recommend_key == 'sleep' else '' }}">
+              <span class="care-button-label">睡觉</span>
+              <span class="care-button-meta">{{ '建议动作' if recommend_key == 'sleep' else '恢复精力' }}</span>
+            </button>
+          </form>
+        {% endif %}
+
+        <button type="button" class="care-action-btn is-emergency {{ 'is-recommended' if recommend_key == 'heal' else '' }}" data-config-toggle="#panel-heal-{{ pet.id }}" aria-expanded="false" aria-controls="panel-heal-{{ pet.id }}">
+          <span class="care-button-label">治病</span>
+          <span class="care-button-meta">{{ '建议动作' if recommend_key == 'heal' else '紧急处理' }}</span>
+        </button>
+      </div>
+
+      <div class="care-config-panels">
+        <div id="panel-feed-{{ pet.id }}" class="config-panel">
+          <div class="config-panel-head">
+            <strong>喂食设置</strong>
+            <span>优质食物会带来更好的恢复</span>
+          </div>
+          <form method="post" action="/pets/{{ pet.id }}/feed" hx-post="/pets/{{ pet.id }}/feed" hx-target="#pet-card-{{ pet.id }}" hx-swap="outerHTML">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="return_to" value="/dashboard">
+            <div class="form-group">
+              <label>选择食物</label>
+              <div class="feed-choice-grid">
+                <label class="feed-choice-card default-feed">
+                  <input type="radio" name="item_id" value="" {% if inventory_ns.first_food_id is none %}checked{% endif %}>
+                  <span class="feed-choice-title">默认饲料</span>
+                  <span class="feed-choice-meta">饱腹 +8 / 心情 +1 / 免费 / 金币 +1</span>
+                </label>
+                {% for inv_item in inv.values() if inv_item.item.category == 'food' and inv_item.quantity > 0 %}
+                  {% set effects = inv_item.item.effect_json or {} %}
+                  <label class="feed-choice-card premium-feed">
+                    <input type="radio" name="item_id" value="{{ inv_item.item.id }}" {% if inventory_ns.first_food_id == inv_item.item.id %}checked{% endif %}>
+                    <span class="feed-choice-title">{{ inv_item.item.name }}</span>
+                    <span class="feed-choice-stock">剩余 {{ inv_item.quantity }}</span>
+                    <span class="feed-choice-meta">饱腹 +{{ 0 - effects.get('hunger', 0) }} / 心情 +{{ effects.get('mood', 0) }} / 健康 +{{ effects.get('health', 0) }} / 金币 +{{ effects.get('coins', 0) }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </div>
+            <div class="panel-actions">
+              <span class="hint-text">{% if inventory_ns.first_food_name %}已自动选中 {{ inventory_ns.first_food_name }}。{% else %}默认饲料仅提供基础恢复，商店食物效果更强。{% endif %}</span>
+              <button type="submit" class="btn-confirm">确认喂食</button>
+            </div>
+          </form>
+        </div>
+
+        {% if inventory_ns.energy_count %}
+          <div id="panel-sleep-{{ pet.id }}" class="config-panel">
+            <div class="config-panel-head">
+              <strong>睡觉 / 补精力</strong>
+              <span>默认睡觉；如果背包里有精力丸，也可以直接补一点精力</span>
+            </div>
+            <form method="post" action="/pets/{{ pet.id }}/sleep" hx-post="/pets/{{ pet.id }}/sleep" hx-target="#pet-card-{{ pet.id }}" hx-swap="outerHTML">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="return_to" value="/dashboard">
+              <div class="sleep-choice-grid">
+                <label class="feed-choice-card default-feed compact-choice">
+                  <input type="radio" name="item_id" value="" checked>
+                  <span class="feed-choice-title">睡觉</span>
+                  <span class="feed-choice-meta">精力 +18（饥饿高时 +10） / 心情 +2 / 金币 +2</span>
+                </label>
+                {% for inv_item in inv.values() if inv_item.item.category == 'medicine' and (inv_item.item.effect_json or {}).get('energy', 0) > 0 and inv_item.quantity > 0 %}
+                  {% set effects = inv_item.item.effect_json or {} %}
+                  <label class="feed-choice-card premium-feed compact-choice">
+                    <input type="radio" name="item_id" value="{{ inv_item.item.id }}">
+                    <span class="feed-choice-title">{{ inv_item.item.name }}（剩余 {{ inv_item.quantity }} 个）</span>
+                    <span class="feed-choice-meta">精力 +{{ effects.get('energy', 0) }} / 心情 +{{ effects.get('mood', 0) }} / 不会进入睡眠</span>
+                  </label>
+                {% endfor %}
+              </div>
+              <div class="panel-actions">
+                <span class="hint-text">点睡觉后再选真正要执行的方式，默认还是直接睡觉。</span>
+                <button type="submit" class="btn-confirm">确认恢复</button>
+              </div>
+            </form>
+          </div>
+        {% endif %}
+
+        <div id="panel-heal-{{ pet.id }}" class="config-panel config-panel-emergency">
+          <div class="config-panel-head">
+            <strong>恢复设置</strong>
+            <span>可选治疗方案，也可直接消耗药剂或精力丸</span>
+          </div>
+          <form method="post" action="/pets/{{ pet.id }}/heal" hx-post="/pets/{{ pet.id }}/heal" hx-target="#pet-card-{{ pet.id }}" hx-swap="outerHTML">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="return_to" value="/dashboard">
+            <div class="config-form-grid single-column">
+              <div class="form-group">
+                <label for="heal-plan-{{ pet.id }}">治疗方案</label>
+                <select id="heal-plan-{{ pet.id }}" name="heal_plan" class="modern-select">
+                  <option value="basic">基础治疗（-8 金币，健康 +24 / 心情 +1）</option>
+                  <option value="plus">强化治疗（-16 金币，健康 +34 / 心情 +3）</option>
+                  <option value="premium">高效治疗（-24 金币，健康 +46 / 心情 +5）</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label>背包药剂 / 精力丸</label>
+                <div class="feed-choice-grid">
+                  <label class="feed-choice-card default-feed">
+                    <input type="radio" name="item_id" value="" checked>
+                    <span class="feed-choice-title">不使用药剂</span>
+                    <span class="feed-choice-meta">按上方治疗方案扣金币恢复</span>
+                  </label>
+                  {% for inv_item in inv.values() if inv_item.item.category == 'medicine' and (inv_item.item.effect_json or {}).get('health', 0) > 0 and inv_item.quantity > 0 %}
+                    {% set effects = inv_item.item.effect_json or {} %}
+                    <label class="feed-choice-card premium-feed">
+                      <input type="radio" name="item_id" value="{{ inv_item.item.id }}">
+                      <span class="feed-choice-title">{{ inv_item.item.name }}</span>
+                      <span class="feed-choice-stock">剩余 {{ inv_item.quantity }}</span>
+                      <span class="feed-choice-meta">健康 +{{ effects.get('health', 0) }} / 心情 +{{ effects.get('mood', 0) }} / 精力 +{{ effects.get('energy', 0) }}</span>
+                    </label>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+            <div class="panel-actions">
+              <span class="hint-text">商店药剂效果均高于默认治疗；精力丸可直接补精力，不必睡觉。</span>
+              <button type="submit" class="btn-confirm danger">开始治疗</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <section class="console-overview-compact">
+      <div class="console-section-head compact">
+        <strong>状态速览</strong>
+        <span class="console-section-tag stat-coins">金币 {{ pet.coins }}</span>
+      </div>
+
+      <div class="console-stat-compact-grid">
+        <div class="console-stat-compact {{ 'tone-danger' if fullness <= 30 else 'tone-warning' if fullness <= 55 else 'tone-good' }}">
+          <div class="console-stat-copy compact">
+            <span>饱腹</span>
+            <strong>{{ fullness }}</strong>
+          </div>
+          <div class="console-meter compact"><span style="width: {{ fullness }}%"></span></div>
+        </div>
+        <div class="console-stat-compact {{ 'tone-danger' if pet.health <= 35 else 'tone-warning' if pet.health <= 60 else 'tone-good' }}">
+          <div class="console-stat-copy compact">
+            <span>健康</span>
+            <strong>{{ pet.health }}</strong>
+          </div>
+          <div class="console-meter compact"><span style="width: {{ pet.health }}%"></span></div>
+        </div>
+        <div class="console-stat-compact {{ 'tone-danger' if pet.cleanliness <= 35 else 'tone-warning' if pet.cleanliness <= 60 else 'tone-good' }}">
+          <div class="console-stat-copy compact">
+            <span>清洁</span>
+            <strong>{{ pet.cleanliness }}</strong>
+          </div>
+          <div class="console-meter compact"><span style="width: {{ pet.cleanliness }}%"></span></div>
+        </div>
+        <div class="console-stat-compact {{ 'tone-danger' if pet.energy <= 30 else 'tone-warning' if pet.energy <= 55 else 'tone-good' }}">
+          <div class="console-stat-copy compact">
+            <span>精力</span>
+            <strong>{{ pet.energy }}</strong>
+          </div>
+          <div class="console-meter compact"><span style="width: {{ pet.energy }}%"></span></div>
+        </div>
+        <div class="console-stat-compact {{ 'tone-warning' if pet.mood <= 45 else 'tone-good' }}">
+          <div class="console-stat-copy compact">
+            <span>心情</span>
+            <strong>{{ pet.mood }}</strong>
+          </div>
+          <div class="console-meter compact"><span style="width: {{ pet.mood }}%"></span></div>
+        </div>
+      </div>
+
+      <div class="console-mini-grid compact">
+        <div class="console-mini-card emphasis compact">
+          <span class="console-label">当前金币</span>
+          <strong class="wallet-current-value">{{ pet.coins }}</strong>
+        </div>
+        <div class="console-mini-card compact">
+          <span class="console-label">最近一笔</span>
+          {% if latest_coin_event %}
+            <strong class="wallet-delta-value coin-change {{ 'coin-plus' if coin_delta > 0 else 'coin-minus' if coin_delta < 0 else 'coin-flat' }}">{{ '+' if coin_delta > 0 else '' }}{{ coin_delta }} 金币</strong>
+          {% else %}
+            <strong class="wallet-delta-value coin-flat">暂无金币记录</strong>
+          {% endif %}
+        </div>
+        <div class="console-mini-card compact">
+          <span class="console-label">托管</span>
+          <strong>{{ {'off':'关闭托管','survival':'保命托管','daily':'生活托管','social':'社交托管','full':'全托管'}[pet.hosting_mode] }}</strong>
+        </div>
+      </div>
+      <div class="console-mini-card compact hosting-summary-card">
+        <span class="console-label">最近托管动作</span>
+        <strong>{{ hosting_summary }}</strong>
+      </div>
+    </section>
+
+    <div class="console-secondary-stack">
+      <div class="dashboard-mini-game-entry">
+        <div>
+          <strong>小游戏</strong>
+          <span class="field-hint">可选海滩防线或新增的方块 FPS 战场。</span>
+        </div>
+        <div class="mini-game-links-row">
+          <a class="game-open-button" href="/pets/{{ pet.id }}/mini-games/shooting">海滩防线</a>
+          <a class="game-open-button secondary" href="/pets/{{ pet.id }}/mini-games/voxel-fps">方块 FPS</a>
+        </div>
+      </div>
+
+      <div class="console-utility-card">
+        <span class="console-label">更多管理</span>
+        <div class="inline-actions wrap console-links">
+          <a href="/pets/{{ pet.id }}">查看详情</a>
+          <a href="/pets/{{ pet.id }}/hosting">托管设置</a>
+          <a href="/pets/{{ pet.id }}/family">家谱</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</article>

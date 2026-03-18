@@ -1,0 +1,28 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#66CCFF"/>
+      <stop offset="100%" stop-color="#0066FF"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0 0; 0 -5; 0 0" dur="3.6s" repeatCount="indefinite"/>
+    <circle cx="100" cy="120" r="75" fill="url(#g3)"/>
+    <path d="M 40 160 Q 20 180 50 180" stroke="#0066FF" stroke-width="15" fill="none" stroke-linecap="round"/>
+    <path d="M 160 160 Q 180 180 150 180" stroke="#0066FF" stroke-width="15" fill="none" stroke-linecap="round"/>
+    <g>
+      <animateTransform attributeName="transform" type="scale" values="1 1; 0.92 0.92; 1 1" dur="2.8s" repeatCount="indefinite"/>
+      <path d="M 75 90 L 80 105 L 95 105 L 82 115 L 87 130 L 75 120 L 63 130 L 68 115 L 55 105 L 70 105 Z" fill="#FFF066"/>
+    </g>
+    <g>
+      <animateTransform attributeName="transform" type="scale" values="1 1; 0.92 0.92; 1 1" dur="2.8s" begin="0.4s" repeatCount="indefinite"/>
+      <path d="M 125 90 L 130 105 L 145 105 L 132 115 L 137 130 L 125 120 L 113 130 L 118 115 L 105 105 L 120 105 Z" fill="#FFF066"/>
+    </g>
+    <path d="M 85 120 Q 92.5 130 100 120 Q 107.5 130 115 120" stroke="#333" stroke-width="4" fill="none" stroke-linecap="round">
+      <animate attributeName="d" values="M 85 120 Q 92.5 130 100 120 Q 107.5 130 115 120;M 85 121 Q 92.5 132 100 121 Q 107.5 132 115 121;M 85 120 Q 92.5 130 100 120 Q 107.5 130 115 120" dur="3.4s" repeatCount="indefinite"/>
+    </path>
+  </g>
+  <path d="M 100 15 Q 85 35 100 45 Q 115 35 100 15" fill="#66CCFF">
+    <animateTransform attributeName="transform" type="translate" values="0 0; 0 5; 0 0" dur="2.4s" repeatCount="indefinite"/>
+  </path>
+</svg>

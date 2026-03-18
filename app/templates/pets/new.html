@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+
+{% block title %}新建宠物{% endblock %}
+
+{% block content %}
+<section class="section-card pet-create-layout">
+  <div class="pet-create-form-column">
+    <h1>新建宠物</h1>
+    <form method="post" action="/pets" class="stack-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>
+        <span>名字</span>
+        <input id="pet-name-input" type="text" name="name" maxlength="100" required>
+      </label>
+      <label>
+        <span>物种</span>
+        <select id="pet-species-input" name="species" required>
+          {% for option in species_options %}
+            <option value="{{ option }}">{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>性别</span>
+        <select id="pet-gender-input" name="gender" required>
+          {% for value, label in gender_options.items() %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>外貌</span>
+        <select id="pet-appearance-input" name="appearance_style" required>
+          {% for value, label in appearance_options.items() %}
+            <option value="{{ value }}">{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <p class="field-hint">右侧会实时预览四种原创蛋仔原型，切换外貌后会立刻看到黄、蓝、粉、绿四种更明显的角色风格差异。</p>
+      <label>
+        <span>颜色</span>
+        <select id="pet-color-input" name="color" required>
+          {% for option in color_options %}
+            <option value="{{ option }}">{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        <span>性格</span>
+        <select name="personality" required>
+          {% for option in personality_options %}
+            <option value="{{ option }}">{{ option }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit">创建宠物</button>
+    </form>
+  </div>
+
+  <aside class="pet-create-preview-column">
+    <p class="eyebrow">右侧实时预览</p>
+    <div id="pet-create-preview" class="pet-portrait tone-pink species-basic gender-male appearance-classic stage-child state-happy pet-preview-card">
+      <div class="pet-skyline"></div>
+      <div class="pet-shadow"></div>
+      <div class="pet-sprite-wrap">
+        <div class="pet-sprite" aria-hidden="true">
+          <span class="pet-orbit orbit-left"></span>
+          <span class="pet-orbit orbit-right"></span>
+          <span class="pet-prop"></span>
+          <span class="pet-prop-tip"></span>
+          <span class="pet-cape"></span>
+          <span class="pet-headwear"></span>
+          <span class="pet-band"></span>
+          <span class="pet-hand hand-left"></span>
+          <span class="pet-hand hand-right"></span>
+          <div class="pet-body">
+            <span class="pet-fringe"></span>
+            <span class="pet-ear ear-left"></span>
+            <span class="pet-ear ear-right"></span>
+            <span class="pet-brow brow-left"></span>
+            <span class="pet-brow brow-right"></span>
+            <span class="pet-eye eye-left"></span>
+            <span class="pet-eye eye-right"></span>
+            <span class="pet-mouth"></span>
+            <span class="pet-blush blush-left"></span>
+            <span class="pet-blush blush-right"></span>
+          </div>
+        </div>
+      </div>
+      <p id="pet-preview-mood" class="pet-mood-note">心情很好，正想撒欢</p>
+    </div>
+    <div class="preview-caption-list">
+      <div>
+        <strong id="pet-preview-name">未命名蛋仔</strong>
+        <span id="pet-preview-species">基础宠物</span>
+      </div>
+      <div>
+        <strong id="pet-preview-gender">男生蛋仔</strong>
+        <span id="pet-preview-appearance">经典圆润</span>
+      </div>
+      <div>
+        <strong id="pet-preview-color">粉色</strong>
+        <span>控制台里会保留这个形象和风格</span>
+      </div>
+    </div>
+  </aside>
+</section>
+<script>
+  const nameInput = document.getElementById("pet-name-input");
+  const speciesInput = document.getElementById("pet-species-input");
+  const genderInput = document.getElementById("pet-gender-input");
+  const appearanceInput = document.getElementById("pet-appearance-input");
+  const colorInput = document.getElementById("pet-color-input");
+  const previewCard = document.getElementById("pet-create-preview");
+  const previewName = document.getElementById("pet-preview-name");
+  const previewSpecies = document.getElementById("pet-preview-species");
+  const previewGender = document.getElementById("pet-preview-gender");
+  const previewAppearance = document.getElementById("pet-preview-appearance");
+  const previewColor = document.getElementById("pet-preview-color");
+  const previewMood = document.getElementById("pet-preview-mood");
+
+  const speciesClassMap = {
+    "基础宠物": "species-basic",
+    "绒球兽": "species-fluff",
+    "水滴兽": "species-droplet",
+  };
+
+  const toneClassMap = {
+    "粉色": "tone-pink",
+    "薄荷绿": "tone-mint",
+    "奶油白": "tone-cream",
+    "晴空蓝": "tone-sky",
+  };
+
+  const genderClassMap = {
+    male: "gender-male",
+    female: "gender-female",
+  };
+
+  const appearanceClassMap = {
+    classic: "appearance-classic",
+    goggles: "appearance-goggles",
+    star: "appearance-star",
+    cape: "appearance-cape",
+  };
+
+  const moodTextMap = {
+    classic: "暖黄探险蛋已经背好小包，准备出门冒险",
+    goggles: "晴蓝机能蛋戴好装备，像个元气队长",
+    star: "蜜粉偶像蛋闪闪发亮，随时准备登台",
+    cape: "森灵披风蛋披着叶片斗篷，像森林守护者",
+  };
+
+  function replaceClass(prefixes, nextClass) {
+    const filtered = Array.from(previewCard.classList).filter((className) => {
+      return !prefixes.some((prefix) => className.startsWith(prefix));
+    });
+    previewCard.className = filtered.join(" ");
+    previewCard.classList.add(nextClass);
+  }
+
+  function syncPreview() {
+    replaceClass(["species-"], speciesClassMap[speciesInput.value] || "species-basic");
+    replaceClass(["tone-"], toneClassMap[colorInput.value] || "tone-pink");
+    replaceClass(["gender-"], genderClassMap[genderInput.value] || "gender-male");
+    replaceClass(["appearance-"], appearanceClassMap[appearanceInput.value] || "appearance-classic");
+
+    previewName.textContent = nameInput.value.trim() || "未命名蛋仔";
+    previewSpecies.textContent = speciesInput.value;
+    previewGender.textContent = genderInput.options[genderInput.selectedIndex].text;
+    previewAppearance.textContent = appearanceInput.options[appearanceInput.selectedIndex].text;
+    previewColor.textContent = colorInput.value;
+    previewMood.textContent = moodTextMap[appearanceInput.value] || "状态平稳，慢慢成长中";
+  }
+
+  [nameInput, speciesInput, genderInput, appearanceInput, colorInput].forEach((element) => {
+    element.addEventListener("input", syncPreview);
+    element.addEventListener("change", syncPreview);
+  });
+
+  syncPreview();
+</script>
+{% endblock %}

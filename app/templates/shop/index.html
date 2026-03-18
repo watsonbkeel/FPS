@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}商店{% endblock %}
+
+{% block content %}
+<section class="section-card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">本小时随机供应</p>
+      <h1>商店</h1>
+      <p class="lead">每小时自动刷新一次，当前窗口截至 {{ refresh_end.strftime('%H:%M') if refresh_end else '整点' }}。</p>
+    </div>
+    <a href="/dashboard">返回控制台</a>
+  </div>
+
+  <div class="dashboard-economy-note">
+    <strong>购买提醒：</strong>
+    <span>商品会直接扣除你所选宠物的金币，购买后可在控制台或宠物详情页的喂食 / 治疗里立即使用。</span>
+  </div>
+
+  {% if pets %}
+    <div class="wallet-overview-grid">
+      {% for pet in pets %}
+        <div class="wallet-overview-card">
+          <strong>{{ pet.name }}</strong>
+          <span>当前金币 {{ pet.coins }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% for category, title, note in [('food', '食物区', '直接用于喂食，饱腹提升不同。'), ('medicine', '恢复区', '药剂可恢复健康，精力丸可直接补充精力。'), ('gift', '礼物区', '用于圈子送礼互动。')] %}
+    {% set category_items = items | selectattr('category', 'equalto', category) | list %}
+    {% if category_items %}
+      <div class="section-head tight">
+        <div>
+          <h2>{{ title }}</h2>
+          <p>{{ note }}</p>
+        </div>
+      </div>
+      <div class="card-grid">
+        {% for item in category_items %}
+          <article class="pet-card" data-shop-item-id="{{ item.id }}" data-shop-item-name="{{ item.name }}">
+            <h2>{{ item.name }}</h2>
+            <p>{{ item.description }}</p>
+            <p>价格：{{ item.price }} 金币</p>
+            <p>分类：{{ {'food':'食物','medicine':'治疗','gift':'礼物'}.get(item.category, item.category) }}</p>
+            {% set effects = item.effect_json or {} %}
+            <ul>
+              {% if effects.get('hunger') %}<li>饱腹提升：{{ 0 - effects.get('hunger') }}</li>{% endif %}
+              {% if effects.get('health') %}<li>治疗恢复：+{{ effects.get('health') }}</li>{% endif %}
+              {% if effects.get('mood') %}<li>心情提升：+{{ effects.get('mood') }}</li>{% endif %}
+              {% if effects.get('energy') %}<li>精力恢复：+{{ effects.get('energy') }}</li>{% endif %}
+              {% if effects.get('coins') %}<li>使用后金币：+{{ effects.get('coins') }}</li>{% endif %}
+              {% if effects.get('relationship') %}<li>送礼关系：+{{ effects.get('relationship') }}</li>{% endif %}
+            </ul>
+            <p>背包已有：{{ inventory[item.id].quantity if item.id in inventory else 0 }}</p>
+            {% if pets %}
+              <form method="post" action="/shop/buy" class="stack-form compact-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="item_id" value="{{ item.id }}">
+                {% if pets|length == 1 %}
+                  <input type="hidden" name="pet_id" value="{{ pets[0].id }}">
+                  <p>默认使用 {{ pets[0].name }} 购买，买后剩余约 {{ pets[0].coins - item.price }} 金币。</p>
+                {% else %}
+                  <label>
+                    <span>使用宠物</span>
+                    <select name="pet_id">
+                      {% for pet in pets %}
+                        <option value="{{ pet.id }}">{{ pet.name }}（{{ pet.coins }} 金币）</option>
+                      {% endfor %}
+                    </select>
+                  </label>
+                {% endif %}
+                <button type="submit">购买</button>
+              </form>
+            {% else %}
+              <p>先创建宠物，才能使用金币购物。</p>
+            {% endif %}
+          </article>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+  <script src="{{ url_for('static', path='shop.js') }}"></script>
+{% endblock %}

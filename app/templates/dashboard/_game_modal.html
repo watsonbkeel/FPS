@@ -1,0 +1,112 @@
+<div id="dashboard-game-modal" class="game-modal" hidden>
+  <div class="game-modal-backdrop" data-game-close></div>
+  <div class="game-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="game-modal-title">
+    <div class="section-head">
+      <div>
+        <p class="eyebrow">互动小游戏</p>
+        <h2 id="game-modal-title">给宠物玩点小游戏</h2>
+        <p id="game-modal-subtitle" class="lead">选择一个游戏开始挑战。</p>
+      </div>
+      <button type="button" class="secondary-link" data-game-close>关闭</button>
+    </div>
+
+    <div class="game-panel-body game-modal-body" data-game-panel data-pet-id="" data-csrf="" data-pet-name="">
+      <div class="game-toolbar">
+        <div class="game-toolbar-bar">
+          <span class="toolbar-mode-badge">海滩防线</span>
+          <div class="toolbar-controls-inline">
+            <label class="toolbar-control">
+              <span>难度</span>
+              <select data-game-difficulty>
+                <option value="easy">简单</option>
+                <option value="normal" selected>标准</option>
+                <option value="hard">困难</option>
+              </select>
+            </label>
+            <label class="toolbar-control shooting-weapon-select" data-weapon-wrap>
+              <span>武器</span>
+              <select data-game-weapon>
+                <option value="machine_gun" selected>重机枪</option>
+                <option value="coastal_cannon">岸防炮</option>
+              </select>
+            </label>
+            <div class="weapon-visual weapon-machine-gun-active" data-shooting-weapon-visual>
+              <span class="weapon-icon weapon-icon-machine-gun" aria-hidden="true"></span>
+              <span class="weapon-icon weapon-icon-coastal-cannon" aria-hidden="true"></span>
+              <span class="sr-only" data-shooting-weapon-label>重机枪</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <section class="mini-game-stage is-active" data-game-screen="shooting">
+        <div class="shooting-range-shell">
+          <div class="shooting-field shooting-field-defense" data-shooting-field>
+            <div class="defense-scene-badge">第一视角阵地</div>
+            <canvas class="defense-canvas" data-defense-canvas width="960" height="520"></canvas>
+            <div class="defense-scanline"></div>
+            <div class="defense-vignette"></div>
+            <div class="defense-overlay defense-start-overlay" data-defense-start>
+              <div class="defense-overlay-card">
+                <p class="eyebrow">海滩防线</p>
+                <h3>守住 20 秒登陆线</h3>
+                <p>敌军会持续登陆推进，压住海滩就能拿到奖励。</p>
+                <div class="defense-brief-list compact">
+                  <span>重机枪：持续扫射</span>
+                  <span>岸防炮：密集清场</span>
+                </div>
+                <button type="button" class="defense-start-button" data-defense-start-button>开始防守</button>
+              </div>
+            </div>
+            <div class="defense-overlay defense-end-overlay" data-defense-end hidden>
+              <div class="defense-overlay-card end-state">
+                <p class="eyebrow">战斗结束</p>
+                <h3 data-defense-end-title>防线结算</h3>
+                <p data-defense-end-summary>正在统计你的击倒数和得分...</p>
+                <button type="button" class="defense-start-button" data-defense-replay>再来一局</button>
+              </div>
+            </div>
+            <div class="defense-hud defense-hud-score">
+              <div class="hud-chip">
+                <span>击倒</span>
+                <strong data-defense-kills>0</strong>
+              </div>
+              <div class="hud-chip">
+                <span>得分</span>
+                <strong data-defense-score>0</strong>
+              </div>
+            </div>
+            <div class="defense-hud defense-hud-timer">
+              <span>倒计时</span>
+              <strong data-defense-timer>20.0</strong>
+            </div>
+            <div class="defense-hud defense-hud-weapon">
+              <span data-defense-weapon-title>重机枪</span>
+              <strong data-defense-weapon-state>连发压制</strong>
+            </div>
+            <div class="defense-hud defense-hud-meter">
+              <span data-defense-meter-label>枪管热量</span>
+              <div class="defense-meter-track"><span data-defense-meter-fill></span></div>
+            </div>
+            <div class="defense-feedback" data-defense-feedback>敌军运输艇正在逼近，压住海滩登陆线。</div>
+            <button type="button" class="defense-fire-button" data-defense-fire>按住开火</button>
+            <div class="defense-flash" data-defense-flash></div>
+            <div class="scope-overlay" data-scope-overlay>
+              <span class="scope-ring"></span>
+              <span class="scope-crosshair crosshair-x"></span>
+              <span class="scope-crosshair crosshair-y"></span>
+              <span class="scope-center-dot"></span>
+            </div>
+          </div>
+        </div>
+        <div class="defense-control-legend compact">
+          <span>桌面：鼠标瞄准 + 左键开火</span>
+          <span>触屏：拖动准星 + 右下火力键</span>
+        </div>
+        <p class="mini-game-status compact" data-game-status="shooting">20 秒守住海滩。重机枪压制单兵，岸防炮清理密集登陆点。</p>
+      </section>
+
+      <div class="mini-game-result" data-game-result>守住 20 秒海滩防线，按击倒士兵数量和战场表现结算金币。</div>
+    </div>
+  </div>
+</div>

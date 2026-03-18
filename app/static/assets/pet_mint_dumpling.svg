@@ -1,0 +1,33 @@
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g4" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#99FFCC"/>
+      <stop offset="100%" stop-color="#00CC99"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <animateTransform attributeName="transform" type="translate" values="0 0; 0 -4; 0 0" dur="3.4s" repeatCount="indefinite"/>
+    <circle cx="55" cy="55" r="20" fill="#00CC99"/>
+    <circle cx="145" cy="55" r="20" fill="#00CC99"/>
+    <rect x="30" y="50" width="140" height="130" rx="50" fill="url(#g4)">
+      <animate attributeName="y" values="50;48;50" dur="3.4s" repeatCount="indefinite"/>
+      <animate attributeName="height" values="130;134;130" dur="3.4s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="70" cy="180" r="12" fill="#00CC99"/>
+    <circle cx="130" cy="180" r="12" fill="#00CC99"/>
+    <rect x="45" y="85" width="110" height="30" rx="10" fill="#333">
+      <animate attributeName="opacity" values="0.92;1;0.92" dur="2.4s" repeatCount="indefinite"/>
+    </rect>
+    <circle cx="75" cy="100" r="6" fill="#00FFCC">
+      <animate attributeName="r" values="6;5;2;6;6" dur="4.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;1;0.4;1;1" dur="4.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="125" cy="100" r="6" fill="#00FFCC">
+      <animate attributeName="r" values="6;5;2;6;6" dur="4.2s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;1;0.4;1;1" dur="4.2s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="100" cy="135" r="8" fill="#333">
+      <animate attributeName="r" values="8;7;9;8" dur="3.2s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+</svg>

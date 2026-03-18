@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}注册{% endblock %}
+
+{% block content %}
+<section class="form-panel narrow">
+  <h1>注册</h1>
+  <form method="post" action="/register" class="stack-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label>
+      <span>邮箱</span>
+      <input type="email" name="email" autocomplete="email" required>
+    </label>
+    <label>
+      <span>密码</span>
+      <input id="register-password" type="password" name="password" autocomplete="new-password" minlength="6" required>
+    </label>
+    <p class="field-hint">密码至少 6 位，支持数字或字母组合。</p>
+    <div id="confirm-password-wrap"></div>
+    <button type="submit">注册</button>
+  </form>
+</section>
+<script>
+  const passwordInput = document.getElementById("register-password");
+  const confirmWrap = document.getElementById("confirm-password-wrap");
+
+  function syncConfirmVisibility() {
+    if (passwordInput.value && !document.getElementById("register-confirm-password")) {
+      confirmWrap.innerHTML = `
+        <label>
+          <span>确认密码</span>
+          <input id="register-confirm-password" type="password" name="confirm_password" autocomplete="new-password" required>
+        </label>
+      `;
+      return;
+    }
+    if (!passwordInput.value && document.getElementById("register-confirm-password")) {
+      confirmWrap.innerHTML = "";
+    }
+  }
+
+  passwordInput.addEventListener("input", syncConfirmVisibility);
+  syncConfirmVisibility();
+</script>
+{% endblock %}

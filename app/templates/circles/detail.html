@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}{{ circle.name }}{% endblock %}
+
+{% block content %}
+<section class="section-card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">圈子详情</p>
+      <h1>{{ circle.name }}</h1>
+      <p>{{ circle.description }}</p>
+    </div>
+    <a href="/circles">返回圈子列表</a>
+  </div>
+
+  <div class="two-column">
+    <div>
+      <h2>成员列表</h2>
+      <ul class="event-list">
+        {% for member in circle.members %}
+          <li>
+            <strong>{{ member.pet.name }}</strong>
+            <span>{{ member.pet.species }} / {{ member.pet.user.email }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div>
+      <h2>加入圈子</h2>
+      {% if eligible_join_pets %}
+        <form method="post" action="/circles/{{ circle.id }}/join" class="stack-form compact-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>
+            <span>选择宠物</span>
+            <select name="pet_id">
+              {% for pet in eligible_join_pets %}
+                <option value="{{ pet.id }}">{{ pet.name }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit">加入圈子</button>
+        </form>
+      {% else %}
+        <p>你的宠物已经全部加入本圈子，或你还没有宠物。</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="section-card two-column">
+  <div>
+    <h2>发起互动</h2>
+    {% if actor_pets and target_pets %}
+      <p>当前礼物库存：{{ gift_count }}。选择“送礼”时会自动消耗 1 个礼物。</p>
+      <form method="post" action="/circles/{{ circle.id }}/interact" class="stack-form compact-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>
+          <span>我的宠物</span>
+          <select name="actor_pet_id">
+            {% for pet in actor_pets %}
+              <option value="{{ pet.id }}">{{ pet.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>目标宠物</span>
+          <select name="target_pet_id">
+            {% for pet in target_pets %}
+              <option value="{{ pet.id }}">{{ pet.name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          <span>互动动作</span>
+          <select name="action_type">
+            {% for key, label in interaction_types.items() %}
+              <option value="{{ key }}">{{ label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit">发起互动</button>
+      </form>
+    {% else %}
+      <p>需要至少一只自己的圈内宠物和一只其他成员宠物，才能发起互动。</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>最近事件</h2>
+    {% if events %}
+      <ul class="event-list">
+        {% for event in events %}
+          <li><strong>{{ event.event_type }}</strong><span>{{ event.message }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>这个圈子还没有互动事件。</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

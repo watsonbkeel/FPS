@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}{{ pet.name }}{% endblock %}
+
+{% block content %}
+{% set inv = inventory or {} %}
+{% set detail_ns = namespace(food_count=0, medicine_count=0, energy_count=0, gift_count=0, first_food_id=None, first_food_name='') %}
+{% for inv_item in inv.values() %}
+  {% if inv_item.quantity > 0 and inv_item.item.category == 'food' %}
+    {% set detail_ns.food_count = detail_ns.food_count + inv_item.quantity %}
+    {% if detail_ns.first_food_id is none %}
+      {% set detail_ns.first_food_id = inv_item.item.id %}
+      {% set detail_ns.first_food_name = inv_item.item.name %}
+    {% endif %}
+  {% elif inv_item.quantity > 0 and inv_item.item.category == 'medicine' %}
+    {% if (inv_item.item.effect_json or {}).get('energy', 0) > 0 %}
+      {% set detail_ns.energy_count = detail_ns.energy_count + inv_item.quantity %}
+    {% else %}
+      {% set detail_ns.medicine_count = detail_ns.medicine_count + inv_item.quantity %}
+    {% endif %}
+  {% elif inv_item.quantity > 0 and inv_item.item.category == 'gift' %}
+    {% set detail_ns.gift_count = detail_ns.gift_count + inv_item.quantity %}
+  {% endif %}
+{% endfor %}
+<section class="section-card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">宠物详情</p>
+      <h1>{{ pet.name }}</h1>
+      <p>{{ pet.species }} / {{ gender_options[pet.gender] }} / {{ appearance_options[pet.appearance_style] }} / {{ pet.color }} / {{ pet.personality }} / {{ pet.stage }}</p>
+    </div>
+    <div class="inline-actions">
+      <a href="/pets/{{ pet.id }}/hosting">托管设置</a>
+      <a href="/pets/{{ pet.id }}/family">家谱</a>
+      <a href="/circles">圈子</a>
+    </div>
+  </div>
+
+  <div class="stat-grid">
+    <span>性别 {{ gender_options[pet.gender] }}</span>
+    <span>外貌 {{ appearance_options[pet.appearance_style] }}</span>
+    <span>饥饿 {{ pet.hunger }}</span>
+    <span>心情 {{ pet.mood }}</span>
+    <span>清洁 {{ pet.cleanliness }}</span>
+    <span>健康 {{ pet.health }}</span>
+    <span>精力 {{ pet.energy }}</span>
+    <span>金币 {{ pet.coins }}</span>
+    <span>关系 {{ pet.relationship_score }}</span>
+    <span>成长倾向 {{ pet.growth_path }}</span>
+  </div>
+
+  <div class="action-grid">
+    <form method="post" action="/pets/{{ pet.id }}/feed" class="stack-form compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>
+        <span>食物</span>
+        <div class="feed-choice-grid detail-feed-choice-grid">
+          <label class="feed-choice-card default-feed">
+            <input type="radio" name="item_id" value="" {% if detail_ns.first_food_id is none %}checked{% endif %}>
+            <span class="feed-choice-title">默认饲料</span>
+            <span class="feed-choice-meta">饱腹 +8 / 心情 +1 / 免费 / 金币 +1</span>
+          </label>
+          {% for inv_item in inv.values() if inv_item.item.category == 'food' and inv_item.quantity > 0 %}
+            {% set effects = inv_item.item.effect_json or {} %}
+            <label class="feed-choice-card premium-feed">
+              <input type="radio" name="item_id" value="{{ inv_item.item.id }}" {% if detail_ns.first_food_id == inv_item.item.id %}checked{% endif %}>
+              <span class="feed-choice-title">{{ inv_item.item.name }}</span>
+              <span class="feed-choice-stock">剩余 {{ inv_item.quantity }}</span>
+              <span class="feed-choice-meta">饱腹 +{{ 0 - effects.get('hunger', 0) }} / 心情 +{{ effects.get('mood', 0) }} / 健康 +{{ effects.get('health', 0) }} / 金币 +{{ effects.get('coins', 0) }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </label>
+      <button type="submit">喂食</button>
+    </form>
+    <form method="post" action="/pets/{{ pet.id }}/play">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">玩耍</button>
+    </form>
+    <form method="post" action="/pets/{{ pet.id }}/clean">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit">清理</button>
+    </form>
+    <form method="post" action="/pets/{{ pet.id }}/sleep" class="stack-form compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      {% if detail_ns.energy_count %}
+        <label>
+          <span>睡觉 / 补精力</span>
+          <div class="feed-choice-grid detail-feed-choice-grid">
+            <label class="feed-choice-card default-feed">
+              <input type="radio" name="item_id" value="" checked>
+              <span class="feed-choice-title">睡觉</span>
+              <span class="feed-choice-meta">精力 +18（饥饿高时 +10） / 心情 +2 / 金币 +2</span>
+            </label>
+            {% for inv_item in inv.values() if inv_item.item.category == 'medicine' and (inv_item.item.effect_json or {}).get('energy', 0) > 0 and inv_item.quantity > 0 %}
+              {% set effects = inv_item.item.effect_json or {} %}
+              <label class="feed-choice-card premium-feed">
+                <input type="radio" name="item_id" value="{{ inv_item.item.id }}">
+                <span class="feed-choice-title">{{ inv_item.item.name }}（剩余 {{ inv_item.quantity }} 个）</span>
+                <span class="feed-choice-meta">精力 +{{ effects.get('energy', 0) }} / 心情 +{{ effects.get('mood', 0) }} / 不会进入睡眠</span>
+              </label>
+            {% endfor %}
+          </div>
+        </label>
+      {% endif %}
+      <button type="submit">睡觉</button>
+    </form>
+    <form method="post" action="/pets/{{ pet.id }}/heal" class="stack-form compact-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label>
+        <span>治疗方案</span>
+        <select name="heal_plan">
+          <option value="basic">基础治疗（-8 金币，健康 +24 / 心情 +1）</option>
+          <option value="plus">强化治疗（-16 金币，健康 +34 / 心情 +3）</option>
+          <option value="premium">高效治疗（-24 金币，健康 +46 / 心情 +5）</option>
+        </select>
+      </label>
+      <label>
+        <span>药剂 / 精力丸</span>
+        <div class="feed-choice-grid detail-feed-choice-grid">
+          <label class="feed-choice-card default-feed">
+            <input type="radio" name="item_id" value="" checked>
+            <span class="feed-choice-title">不使用药剂</span>
+            <span class="feed-choice-meta">按上方治疗方案扣金币恢复</span>
+          </label>
+          {% for inv_item in inv.values() if inv_item.item.category == 'medicine' and (inv_item.item.effect_json or {}).get('health', 0) > 0 and inv_item.quantity > 0 %}
+            {% set effects = inv_item.item.effect_json or {} %}
+            <label class="feed-choice-card premium-feed">
+              <input type="radio" name="item_id" value="{{ inv_item.item.id }}">
+              <span class="feed-choice-title">{{ inv_item.item.name }}</span>
+              <span class="feed-choice-stock">剩余 {{ inv_item.quantity }}</span>
+              <span class="feed-choice-meta">健康 +{{ effects.get('health', 0) }} / 心情 +{{ effects.get('mood', 0) }} / 精力 +{{ effects.get('energy', 0) }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </label>
+      <button type="submit">治病</button>
+    </form>
+  </div>
+
+  <div class="stat-grid">
+    <span>背包食物 {{ food_count }}</span>
+    <span>背包药剂 {{ medicine_count }}</span>
+    <span>精力丸 {{ detail_ns.energy_count }}</span>
+    <span>背包礼物 {{ gift_count }}</span>
+    {% if detail_ns.first_food_name %}<span>当前默认食物 {{ detail_ns.first_food_name }}</span>{% endif %}
+  </div>
+
+  <div class="two-column">
+    <div>
+      <h2>圈子归属</h2>
+      {% if memberships %}
+        <ul class="event-list">
+          {% for membership in memberships %}
+            <li>
+              <strong>{{ membership.circle.name }}</strong>
+              <span>已加入圈子</span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>还没有加入圈子。</p>
+      {% endif %}
+    </div>
+    <div>
+      <h2>繁殖</h2>
+      {% if partners %}
+        <form method="post" action="/pets/{{ pet.id }}/breed" class="stack-form compact-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <label>
+            <span>繁殖对象</span>
+            <select name="partner_pet_id">
+              {% for partner in partners %}
+                <option value="{{ partner.id }}">{{ partner.name }}（关系足够）</option>
+              {% endfor %}
+            </select>
+          </label>
+          <button type="submit">生成下一代</button>
+        </form>
+      {% else %}
+        <p>需要成年且关系值足够的对象后才能繁殖。</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="section-card">
+  <h2>事件日志</h2>
+  {% if events %}
+    <ul class="event-list">
+      {% for event in events %}
+        <li>
+          <strong>{{ event.event_type }}</strong>
+          <span>{{ event.message }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>还没有事件记录。</p>
+  {% endif %}
+</section>
+{% endblock %}

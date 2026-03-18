@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}控制台{% endblock %}
+
+{% block content %}
+<section class="section-card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">欢迎回来</p>
+      <h1>控制台</h1>
+    </div>
+    <div class="inline-actions">
+      <a class="primary-link" href="/pets/new">新建宠物</a>
+      <a class="secondary-link" href="/circles">圈子</a>
+      <a class="secondary-link" href="/shop">商店</a>
+    </div>
+  </div>
+
+  {% if pets %}
+    <div class="dashboard-economy-note">
+      <strong>金币怎么来：</strong>
+      <span>默认喂食 +1、玩耍 +6、清理 +3、睡觉 +2、圈子互动 +2~8；治病会花费 8 金币；小游戏按分数和难度奖励更多金币。</span>
+    </div>
+    {% include "dashboard/_wallet_summary.html" %}
+    <div class="card-grid dashboard-pet-grid" id="dashboard-pet-grid">
+      {% for pet in pets %}
+        {% include "dashboard/_pet_card.html" %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <p>你还没有宠物，先去创建一只吧。</p>
+  {% endif %}
+</section>
+
+<section id="dashboard-events-section" class="section-card two-column">
+  <div>
+    <h2>最近事件</h2>
+    {% if events %}
+      <ul class="event-list">
+        {% for event in events %}
+          <li>
+            <strong>{{ event.event_type }}</strong>
+            <span>{{ event.message }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>还没有新事件。</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>圈子参与</h2>
+    {% if circle_memberships %}
+      <ul class="event-list">
+        {% for membership in circle_memberships %}
+          <li>
+            <strong>{{ membership.pet.name }}</strong>
+            <span>已加入 {{ membership.circle.name }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>还没有宠物加入圈子。</p>
+    {% endif %}
+  </div>
+</section>
+
+{% include "dashboard/_coin_log_section.html" %}
+<script src="{{ url_for('static', path='dashboard.js') }}"></script>
+{% endblock %}

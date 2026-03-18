@@ -1,0 +1,885 @@
+.voxel-fps-page {
+  display: grid;
+  gap: 1rem;
+}
+
+.voxel-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 24px;
+  border: 1px solid rgba(100, 74, 59, 0.12);
+  background: linear-gradient(135deg, rgba(255, 249, 241, 0.95), rgba(241, 247, 234, 0.9));
+}
+
+.voxel-topbar-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+
+.voxel-stage-fullscreen {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 8;
+  min-height: 40px;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 22, 28, 0.72);
+  color: #fff3dc;
+  font-weight: 800;
+  box-shadow: 0 12px 20px rgba(0, 0, 0, 0.18);
+}
+
+.voxel-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.voxel-side-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.voxel-side-card,
+.voxel-main-stage {
+  border-radius: 24px;
+  border: 1px solid rgba(100, 74, 59, 0.12);
+  background: linear-gradient(180deg, rgba(255, 252, 247, 0.95), rgba(249, 242, 232, 0.92));
+}
+
+.voxel-side-card {
+  display: grid;
+  gap: 0.4rem;
+  padding: 0.95rem 1rem;
+}
+
+.voxel-hint-list {
+  margin: 0;
+  padding-left: 1rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.voxel-main-stage {
+  padding: 1rem;
+}
+
+.voxel-stage-hud {
+  position: absolute;
+  left: 14px;
+  right: 132px;
+  top: 14px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.voxel-hud-block {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.75rem 0.8rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(100, 74, 59, 0.1);
+}
+
+.voxel-hud-block span {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #7b685e;
+}
+
+.voxel-hud-block strong {
+  font-size: 1.2rem;
+  color: var(--accent-deep);
+}
+
+.voxel-hud-block.emphasis {
+  background: linear-gradient(135deg, rgba(227, 245, 218, 0.94), rgba(245, 251, 238, 0.92));
+}
+
+.voxel-hud-block.emphasis.is-danger {
+  background: linear-gradient(135deg, rgba(255, 222, 222, 0.96), rgba(255, 239, 239, 0.94));
+  border-color: rgba(191, 74, 74, 0.24);
+}
+
+.voxel-stage-shell {
+  position: relative;
+  min-height: 820px;
+  border-radius: 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, #7cb1ff 0%, #8cc767 55%, #6a4a2c 100%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03), 0 28px 56px rgba(0, 0, 0, 0.18);
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.voxel-canvas,
+.voxel-damage-screen,
+.voxel-overlay {
+  position: absolute;
+  inset: 0;
+}
+
+.voxel-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.voxel-damage-screen {
+  pointer-events: none;
+  z-index: 3;
+  opacity: 0;
+  background: radial-gradient(circle at center, transparent 38%, rgba(255, 54, 54, 0.18) 76%, rgba(128, 0, 0, 0.46) 100%);
+  transition: opacity 0.14s ease;
+}
+
+.voxel-damage-screen.is-active {
+  opacity: 1;
+}
+
+.voxel-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 48px;
+  height: 48px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 4;
+}
+
+.voxel-scope-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 0 18%, rgba(0, 0, 0, 0.1) 22%, rgba(0, 0, 0, 0.74) 36%, rgba(0, 0, 0, 0.94) 100%),
+    linear-gradient(90deg, transparent 49.6%, rgba(255,255,255,0.9) 49.8%, rgba(255,255,255,0.9) 50.2%, transparent 50.4%),
+    linear-gradient(180deg, transparent 49.6%, rgba(255,255,255,0.9) 49.8%, rgba(255,255,255,0.9) 50.2%, transparent 50.4%);
+}
+
+.voxel-scope-overlay.is-rifle-scope {
+  background:
+    radial-gradient(circle at center, transparent 0 28%, rgba(0, 0, 0, 0.08) 34%, rgba(0, 0, 0, 0.58) 58%, rgba(0, 0, 0, 0.82) 100%),
+    linear-gradient(90deg, transparent 49.7%, rgba(255,255,255,0.82) 49.9%, rgba(255,255,255,0.82) 50.1%, transparent 50.3%),
+    linear-gradient(180deg, transparent 49.7%, rgba(255,255,255,0.82) 49.9%, rgba(255,255,255,0.82) 50.1%, transparent 50.3%);
+}
+
+.voxel-scope-overlay[hidden] {
+  display: none;
+}
+
+.crosshair-h,
+.crosshair-v {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.95);
+}
+
+.crosshair-h {
+  left: 6px;
+  right: 6px;
+  top: 23px;
+  height: 2px;
+}
+
+.crosshair-v {
+  top: 6px;
+  bottom: 6px;
+  left: 23px;
+  width: 2px;
+}
+
+.crosshair-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgba(255, 245, 196, 0.95);
+  box-shadow: 0 0 10px rgba(255, 205, 120, 0.5);
+}
+
+.voxel-hit-marker {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 64px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  z-index: 4;
+}
+
+.voxel-hit-marker.is-active {
+  opacity: 1;
+}
+
+.voxel-mobile-controls {
+  position: absolute;
+  inset: auto 0 12px 0;
+  z-index: 6;
+  display: none;
+  justify-content: space-between;
+  align-items: stretch;
+  padding: 0 14px;
+  pointer-events: none;
+}
+
+.mobile-left-cluster,
+.mobile-right-cluster {
+  display: grid;
+  gap: 0.5rem;
+  pointer-events: auto;
+}
+
+.mobile-left-cluster {
+  align-self: end;
+  justify-items: start;
+}
+
+.mobile-right-cluster {
+  align-self: stretch;
+  justify-items: end;
+}
+
+.mobile-control-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  margin-bottom: 0.45rem;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(18, 22, 28, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #f3ece0;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.mobile-stick-zone,
+.mobile-fire-button,
+.mobile-action-btn,
+.mobile-scope-btn,
+.mobile-pause-btn,
+.mobile-weapon-btn {
+  pointer-events: auto;
+}
+
+.mobile-stance-cluster {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.mobile-fire-cluster {
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+  align-self: end;
+}
+
+.mobile-weapon-bar {
+  display: flex;
+  gap: 0.35rem;
+  align-self: start;
+}
+
+.mobile-action-btn,
+.mobile-scope-btn,
+.mobile-pause-btn {
+  min-width: 52px;
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(18, 22, 28, 0.62);
+  color: #fff3dc;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.mobile-weapon-btn {
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 22, 28, 0.52);
+  color: #fff3dc;
+  font-weight: 800;
+  font-size: 0.78rem;
+}
+
+.mobile-weapon-btn.is-active {
+  background: rgba(255, 206, 110, 0.28);
+  border-color: rgba(255, 206, 110, 0.42);
+}
+
+.mobile-stick-base {
+  position: relative;
+  width: 136px;
+  height: 136px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(18, 22, 28, 0.42);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06), 0 12px 20px rgba(0, 0, 0, 0.18);
+}
+
+.mobile-stick-thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+}
+
+.mobile-fire-button {
+  min-width: 118px;
+  min-height: 118px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 225, 200, 0.24);
+  background: linear-gradient(135deg, rgba(146, 48, 31, 0.94), rgba(206, 92, 52, 0.96));
+  color: #fff;
+  font-weight: 800;
+  box-shadow: 0 18px 30px rgba(0, 0, 0, 0.18);
+  font-size: 1rem;
+}
+
+.voxel-hit-marker::before,
+.voxel-hit-marker::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-top: 3px solid rgba(255, 102, 84, 0.9);
+}
+
+.voxel-hit-marker::before { transform: rotate(45deg); }
+.voxel-hit-marker::after { transform: rotate(-45deg); }
+
+.voxel-killfeed {
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  z-index: 4;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.voxel-label-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.voxel-player-label {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  min-height: 28px;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  background: rgba(15, 19, 26, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff3dc;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.voxel-killfeed-item {
+  padding: 0.45rem 0.65rem;
+  border-radius: 12px;
+  background: rgba(21, 26, 34, 0.7);
+  color: #f7f1e7;
+  font-size: 0.82rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 18px rgba(0, 0, 0, 0.14);
+}
+
+.voxel-overlay {
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 1.2rem;
+  background: linear-gradient(180deg, rgba(10, 12, 18, 0.22), rgba(10, 12, 18, 0.46));
+  pointer-events: none;
+}
+
+.voxel-overlay[hidden] {
+  display: none;
+}
+
+[data-voxel-overlay].voxel-overlay:not([hidden]) {
+  display: block;
+  padding: 0;
+}
+
+.voxel-flow-screen {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: start;
+  justify-items: stretch;
+  padding: 1rem;
+  overflow: auto;
+  pointer-events: auto;
+}
+
+.voxel-flow-screen.is-centered {
+  align-content: center;
+  justify-items: center;
+}
+
+.voxel-flow-screen[hidden] {
+  display: none;
+}
+
+.voxel-overlay-card {
+  width: min(100%, 460px);
+  display: grid;
+  gap: 0.65rem;
+  padding: 1rem 1.05rem;
+  border-radius: 22px;
+  background: rgba(14, 17, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+  text-align: center;
+  pointer-events: auto;
+}
+
+.voxel-overlay-card h2,
+.voxel-overlay-card p {
+  margin: 0;
+  color: #f3ece0;
+}
+
+.voxel-overlay-card p {
+  color: rgba(243, 236, 224, 0.82);
+}
+
+.voxel-brief-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.voxel-brief-grid span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.35rem 0.62rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(244, 239, 231, 0.92);
+  font-size: 0.8rem;
+}
+
+.voxel-start-btn {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 0;
+  font-weight: 800;
+}
+
+.voxel-start-btn.is-secondary {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff4df;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.voxel-mode-actions,
+.voxel-room-browser-actions {
+  display: flex;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.voxel-flow-card {
+  width: min(100%, 960px);
+  margin: 0 auto;
+  max-height: calc(100vh - 5.5rem);
+  overflow: auto;
+}
+
+.voxel-room-browser,
+.voxel-lobby-card {
+  width: min(100%, 960px);
+}
+
+.voxel-room-browser-shell {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.voxel-room-create-card,
+.voxel-room-list-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.95rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+}
+
+.voxel-room-create-card h3,
+.voxel-room-create-card p,
+.voxel-room-list-head {
+  margin: 0;
+}
+
+.voxel-room-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.voxel-room-list {
+  display: grid;
+  gap: 0.65rem;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 0.2rem;
+}
+
+.voxel-room-entry {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.8rem 0.9rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+}
+
+.voxel-room-entry strong,
+.voxel-room-entry span,
+.voxel-lobby-meta strong,
+.voxel-team-slot strong {
+  color: #fff3dc;
+}
+
+.voxel-room-entry small,
+.voxel-room-entry span,
+.voxel-team-slot small,
+.voxel-lobby-meta span {
+  color: rgba(243, 236, 224, 0.76);
+}
+
+.voxel-room-entry-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.voxel-room-entry-actions button {
+  min-height: 38px;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff3dc;
+  font-weight: 700;
+}
+
+.voxel-lobby-meta {
+  display: inline-grid;
+  gap: 0.15rem;
+  padding: 0.8rem 1rem;
+  margin: 0 auto;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.voxel-team-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.voxel-team-column {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.8rem;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  text-align: left;
+}
+
+.voxel-team-column header {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.voxel-team-column > div {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.voxel-team-slot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.65rem 0.72rem;
+  border-radius: 14px;
+  background: rgba(15, 17, 22, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.voxel-team-slot button {
+  min-height: 36px;
+  padding: 0.35rem 0.72rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff3dc;
+  font-weight: 700;
+}
+
+.voxel-team-slot button.slot-toggle {
+  background: rgba(255, 200, 140, 0.12);
+}
+
+.voxel-team-slot.is-closed {
+  opacity: 0.76;
+  background: rgba(60, 60, 60, 0.28);
+}
+
+.voxel-team-slot.is-captain {
+  border-color: rgba(255, 206, 110, 0.32);
+  box-shadow: inset 0 0 0 1px rgba(255, 206, 110, 0.12);
+}
+
+.voxel-team-slot.is-self {
+  background: rgba(121, 183, 255, 0.14);
+  border-color: rgba(121, 183, 255, 0.24);
+}
+
+.voxel-empty-state {
+  padding: 0.9rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(243, 236, 224, 0.72);
+}
+
+.voxel-team-column.red-team {
+  background: rgba(149, 53, 53, 0.14);
+}
+
+.voxel-team-column.blue-team {
+  background: rgba(63, 108, 171, 0.14);
+}
+
+.voxel-end-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.respawn-state {
+  width: min(100%, 360px);
+}
+
+.pause-state {
+  width: min(100%, 360px);
+}
+
+.pause-icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff3dc;
+  font-size: 1.8rem;
+  font-weight: 800;
+}
+
+.voxel-end-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.voxel-end-stat {
+  display: grid;
+  gap: 0.12rem;
+  padding: 0.72rem 0.8rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.voxel-end-stat span {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(243, 236, 224, 0.72);
+}
+
+.voxel-end-stat strong {
+  font-size: 1.15rem;
+  color: #fff3dc;
+}
+
+.voxel-end-stat.emphasis {
+  background: rgba(255, 224, 171, 0.16);
+}
+
+.voxel-bottom-panel {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 0.7rem;
+  margin-top: 0.75rem;
+}
+
+.voxel-status,
+.voxel-result {
+  margin: 0;
+  padding: 0.85rem 0.95rem;
+  border-radius: 16px;
+  border: 1px solid rgba(100, 74, 59, 0.1);
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.voxel-result.is-success {
+  background: rgba(230, 245, 224, 0.86);
+  border-color: rgba(97, 146, 84, 0.2);
+}
+
+.voxel-result.is-warning {
+  background: rgba(255, 237, 216, 0.9);
+  border-color: rgba(188, 126, 72, 0.2);
+}
+
+@media (max-width: 1180px) {
+  .voxel-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .voxel-stage-hud {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    right: 14px;
+    top: 60px;
+  }
+
+  .voxel-bottom-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .voxel-room-browser-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .voxel-flow-card {
+    max-height: calc(100vh - 4rem);
+  }
+}
+
+@media (max-width: 760px) {
+  .voxel-topbar {
+    flex-direction: column;
+  }
+
+  .voxel-main-stage {
+    padding: 0.75rem;
+  }
+
+  .voxel-stage-shell {
+    min-height: 640px;
+  }
+
+  .voxel-stage-fullscreen {
+    top: 10px;
+    right: 10px;
+    min-height: 36px;
+    padding: 0.35rem 0.72rem;
+  }
+
+  .voxel-stage-hud,
+  .voxel-brief-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .voxel-mobile-controls {
+    display: flex;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  html, body {
+    overscroll-behavior: none;
+  }
+  .voxel-mobile-controls {
+    display: flex;
+  }
+}
+
+@media (min-width: 1024px) and (hover: none) {
+  .mobile-stick-base {
+    width: 168px;
+    height: 168px;
+  }
+
+  .mobile-fire-button {
+    min-width: 138px;
+    min-height: 138px;
+  }
+
+  .mobile-action-btn,
+  .mobile-scope-btn,
+  .mobile-pause-btn {
+    min-width: 62px;
+    min-height: 62px;
+  }
+}
+
+@media (orientation: portrait) and (hover: none), (orientation: portrait) and (pointer: coarse) {
+  .voxel-stage-shell::after {
+    content: '建议横屏体验方块战场';
+    position: absolute;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    z-index: 7;
+    min-height: 34px;
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    background: rgba(18, 22, 28, 0.72);
+    color: #f5edde;
+    font-size: 0.82rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+}

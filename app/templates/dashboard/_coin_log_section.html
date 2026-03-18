@@ -1,0 +1,22 @@
+<section id="dashboard-coin-log-section" class="section-card"{% if oob %} hx-swap-oob="outerHTML"{% endif %}>
+  <div class="section-head tight">
+    <div>
+      <h2>金币账本</h2>
+      <p class="lead">这里会记录赚到多少、花掉多少，以及每次操作后的剩余金币。</p>
+    </div>
+  </div>
+  {% if coin_events %}
+    <ul id="dashboard-coin-log-list" class="event-list">
+      {% for event in coin_events %}
+        {% set coin_delta = event.metadata_json.get('coin_delta', 0) %}
+        <li>
+          <strong>{{ event.pet.name if event.pet else '宠物' }} / {{ event.event_type }}</strong>
+          <span>{{ event.message }}</span>
+          <span class="coin-change {{ 'coin-plus' if coin_delta > 0 else 'coin-minus' if coin_delta < 0 else 'coin-flat' }}">{{ '+' if coin_delta > 0 else '' }}{{ coin_delta }} 金币</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p>还没有金币流水，先在控制台照顾宠物或去圈子互动吧。</p>
+  {% endif %}
+</section>

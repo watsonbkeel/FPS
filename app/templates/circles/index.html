@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}圈子{% endblock %}
+
+{% block content %}
+<section class="section-card">
+  <div class="section-head">
+    <div>
+      <p class="eyebrow">轻社交空间</p>
+      <h1>圈子</h1>
+    </div>
+    <a class="primary-link" href="/circles?show=create">创建圈子</a>
+  </div>
+
+  {% if show_create %}
+    <div class="form-panel soft">
+      <h2>创建圈子</h2>
+      <form method="post" action="/circles" class="stack-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label>
+          <span>圈子名称</span>
+          <input type="text" name="name" maxlength="100" required>
+        </label>
+        <label>
+          <span>圈子简介</span>
+          <textarea name="description" rows="4" maxlength="500"></textarea>
+        </label>
+        <button type="submit">创建</button>
+      </form>
+    </div>
+  {% endif %}
+
+  <div class="card-grid">
+    {% for circle in circles %}
+      <article class="pet-card">
+        <h2>{{ circle.name }}</h2>
+        <p>{{ circle.description or '这个圈子还没有简介。' }}</p>
+        <p>成员数：{{ circle.members|length }}</p>
+        <a href="/circles/{{ circle.id }}">进入圈子</a>
+      </article>
+    {% else %}
+      <p>还没有圈子，来创建第一个吧。</p>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

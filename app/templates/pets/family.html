@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}{{ pet.name }} 的家谱{% endblock %}
+
+{% block content %}
+<section class="section-card two-column">
+  <div>
+    <h1>{{ pet.name }} 的家谱</h1>
+    <p>{{ pet.stage }} / {{ pet.growth_path }}</p>
+  </div>
+  <div class="inline-actions wrap">
+    <a href="/pets/{{ pet.id }}">返回详情</a>
+    <a href="/circles">去圈子找对象</a>
+  </div>
+</section>
+
+<section class="section-card two-column">
+  <div>
+    <h2>父母</h2>
+    {% if parents %}
+      <ul class="event-list">
+        {% for parent in parents %}
+          <li><strong>{{ parent.name }}</strong><span>{{ parent.species }} / {{ parent.stage }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>暂无父母记录。</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>子代</h2>
+    {% if children %}
+      <ul class="event-list">
+        {% for child in children %}
+          <li><strong>{{ child.name }}</strong><span>{{ child.species }} / {{ child.stage }}</span></li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p>暂无子代记录。</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

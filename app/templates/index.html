@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Tamapet 首页{% endblock %}
+
+{% block content %}
+<section class="hero-panel">
+  <div>
+    <p class="eyebrow">网页版拓麻歌子 / 轻社交宠物圈子</p>
+    <h1>让宠物在你的照顾下成长，也在圈子里交到朋友。</h1>
+    <p class="lead">支持注册登录、创建宠物、日常照顾、托管、圈子互动、家谱与基础商店。</p>
+    <div class="hero-actions">
+      {% if current_user %}
+        <a class="primary-link" href="/dashboard">进入控制台</a>
+      {% else %}
+        <a class="primary-link" href="/register">立即注册</a>
+        <a class="secondary-link" href="/login">已有账号，去登录</a>
+      {% endif %}
+    </div>
+  </div>
+  <aside class="summary-card">
+    <h2>今日循环</h2>
+    <ol>
+      <li>查看宠物状态</li>
+      <li>执行喂食与玩耍</li>
+      <li>配置托管模式</li>
+      <li>加入圈子展开互动</li>
+    </ol>
+  </aside>
+</section>
+
+{% if current_user and pets %}
+<section class="section-card">
+  <div class="section-head">
+    <h2>我的宠物</h2>
+    <a href="/pets/new">新建宠物</a>
+  </div>
+  <div class="card-grid">
+    {% for pet in pets %}
+      <article class="pet-card">
+        <h3>{{ pet.name }}</h3>
+        <p>{{ pet.stage }} / {{ pet.species }} / {{ pet.color }}</p>
+        <div class="stat-grid compact">
+          <span>饥饿 {{ pet.hunger }}</span>
+          <span>心情 {{ pet.mood }}</span>
+          <span>清洁 {{ pet.cleanliness }}</span>
+          <span>健康 {{ pet.health }}</span>
+          <span>精力 {{ pet.energy }}</span>
+          <span>金币 {{ pet.coins }}</span>
+        </div>
+        <a href="/pets/{{ pet.id }}">查看详情</a>
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endblock %}

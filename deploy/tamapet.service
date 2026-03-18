@@ -1,0 +1,19 @@
+[Unit]
+Description=Tamapet FastAPI Web App
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/root/tamapet
+EnvironmentFile=/root/tamapet/.env
+ExecStart=/root/tamapet/.venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 18427
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+KillSignal=SIGTERM
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

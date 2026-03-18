@@ -1,0 +1,285 @@
+{% extends "base.html" %}
+
+{% block title %}方块战场{% endblock %}
+{% block page_shell_class %}page-shell-wide{% endblock %}
+
+{% block head_extra %}
+  <link rel="stylesheet" href="{{ url_for('static', path='voxel-fps.css') }}?v=20260318-voxel-fps-5">
+  <script>
+    (function() {
+      var meta = document.querySelector('meta[name=viewport]');
+      if (meta) { meta.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'; }
+    })();
+  </script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/"
+      }
+    }
+  </script>
+{% endblock %}
+
+{% block content %}
+<section
+  class="voxel-fps-page"
+  id="voxel-fps-page"
+  tabindex="-1"
+  data-pet-id="{{ pet.id }}"
+  data-pet-name="{{ pet.name }}"
+  data-csrf="{{ csrf_token }}"
+  data-claim-url="/pets/{{ pet.id }}/mini-games/claim"
+  data-return-url="{{ return_to_dashboard }}"
+  data-room-base-url="/pets/{{ pet.id }}/mini-games/voxel-fps/rooms"
+  data-room-ws-template="/pets/{{ pet.id }}/mini-games/voxel-fps/rooms/__ROOM_ID__/ws"
+  data-user-label="{{ current_user.email if current_user else pet.name }}"
+  data-match-duration="{{ match_duration_seconds or 300 }}"
+>
+  <div class="voxel-topbar">
+    <div>
+      <p class="eyebrow">新增小游戏</p>
+      <h1>方块战场</h1>
+      <p class="lead">Minecraft 风格 5v5 单机 FPS。锁定鼠标后用 WASD 移动、Space 跳跃、左键开火，并利用大屋、哨塔、梯子和手雷争夺地形优势。</p>
+    </div>
+    <div class="voxel-topbar-actions">
+      <a class="secondary-link return-link" href="{{ return_to_dashboard }}">返回控制台</a>
+    </div>
+  </div>
+
+  <div class="voxel-layout">
+    <aside class="voxel-side-panel">
+      <section class="voxel-side-card">
+        <span class="side-label">战斗规则</span>
+        <ul class="voxel-hint-list">
+          <li>5v5 团队战：你 + 4 名友军，对抗 5 名敌军</li>
+          <li>300 秒内击败对方，或在倒计时结束时拿到更高击杀分</li>
+          <li>鼠标锁定后才可旋转视角和射击</li>
+        </ul>
+      </section>
+
+      <section class="voxel-side-card">
+        <span class="side-label">操作说明</span>
+        <ul class="voxel-hint-list">
+          <li>W/A/S/D：移动</li>
+          <li>C：蹲下切换 / Z：趴下切换</li>
+          <li>1：长枪（2x 镜） / 2：狙击枪 / 3：手雷 / 4：红旗指挥</li>
+          <li>Space：跳跃 / 靠近梯子后配合 W、S 攀爬</li>
+          <li>鼠标左键：开火 / 投掷手雷，右键：武器开镜</li>
+          <li>4：真人队长切换红旗并投掷集结点 / Esc：释放鼠标并暂停</li>
+        </ul>
+      </section>
+
+      <section class="voxel-side-card">
+        <span class="side-label">当前宠物</span>
+        <strong>{{ pet.name }}</strong>
+        <small>{{ pet.species }} / {{ pet.stage }} / {{ pet.personality }}</small>
+      </section>
+    </aside>
+
+    <section class="voxel-main-stage">
+      <div class="voxel-stage-shell" data-voxel-stage>
+        <button type="button" class="voxel-stage-fullscreen" data-voxel-fullscreen>进入全屏</button>
+        <div class="voxel-stage-hud">
+          <div class="voxel-hud-block timer">
+            <span>倒计时</span>
+            <strong data-voxel-timer>{{ match_duration_seconds or 300 }}</strong>
+          </div>
+          <div class="voxel-hud-block emphasis">
+            <span>生命</span>
+            <strong data-voxel-health>100</strong>
+          </div>
+          <div class="voxel-hud-block">
+            <span>击杀</span>
+            <strong data-voxel-kills>0</strong>
+          </div>
+          <div class="voxel-hud-block">
+            <span>友军</span>
+            <strong data-voxel-friendly>5</strong>
+          </div>
+          <div class="voxel-hud-block">
+            <span>敌军</span>
+            <strong data-voxel-enemy>5</strong>
+          </div>
+          <div class="voxel-hud-block">
+            <span>武器</span>
+            <strong data-voxel-weapon>长枪</strong>
+          </div>
+          <div class="voxel-hud-block">
+            <span>姿态</span>
+            <strong data-voxel-stance>站立</strong>
+          </div>
+        </div>
+        <canvas class="voxel-canvas" data-voxel-canvas></canvas>
+        <div class="voxel-damage-screen" data-voxel-damage-screen></div>
+        <div class="voxel-crosshair" aria-hidden="true">
+          <span class="crosshair-h"></span>
+          <span class="crosshair-v"></span>
+          <span class="crosshair-dot"></span>
+        </div>
+        <div class="voxel-label-layer" data-voxel-label-layer></div>
+        <div class="voxel-scope-overlay" data-voxel-scope-overlay hidden></div>
+        <div class="voxel-hit-marker" data-hit-marker></div>
+        <div class="voxel-killfeed" data-voxel-killfeed></div>
+        <div class="voxel-mobile-controls" data-voxel-mobile-controls>
+          <div class="mobile-left-cluster">
+            <button type="button" class="mobile-pause-btn" data-voxel-mobile-pause>❙❙</button>
+            <div class="mobile-stick-zone" data-voxel-stick-zone>
+              <span class="mobile-control-label">移动</span>
+              <div class="mobile-stick-base">
+                <div class="mobile-stick-thumb" data-voxel-stick-thumb></div>
+              </div>
+            </div>
+            <div class="mobile-stance-cluster">
+              <button type="button" class="mobile-action-btn" data-voxel-mobile-crouch>蹲</button>
+              <button type="button" class="mobile-action-btn" data-voxel-mobile-jump>跳</button>
+            </div>
+          </div>
+          <div class="mobile-right-cluster">
+            <div class="mobile-weapon-bar">
+              <button type="button" class="mobile-weapon-btn is-active" data-voxel-mobile-weapon="voxel_rifle">1</button>
+              <button type="button" class="mobile-weapon-btn" data-voxel-mobile-weapon="voxel_sniper">2</button>
+              <button type="button" class="mobile-weapon-btn" data-voxel-mobile-weapon="voxel_grenade">3</button>
+              <button type="button" class="mobile-weapon-btn" data-voxel-mobile-weapon="voxel_command_flag">4</button>
+            </div>
+            <div class="mobile-fire-cluster">
+              <button type="button" class="mobile-scope-btn" data-voxel-mobile-scope>🔭</button>
+              <button type="button" class="mobile-fire-button" data-voxel-mobile-fire><span>开火</span></button>
+            </div>
+          </div>
+        </div>
+
+        <div class="voxel-overlay" data-voxel-overlay>
+          <section class="voxel-flow-screen is-centered" data-voxel-mode-panel>
+            <div class="voxel-overlay-card voxel-flow-card">
+              <p class="eyebrow">方块战场</p>
+              <h2>选择作战模式</h2>
+              <p>先决定是直接进入单机战斗，还是进入联机房间流程。这里不再堆叠房间和队伍配置内容。</p>
+              <div class="voxel-brief-grid">
+                <span>单机 5v5</span>
+                <span>联机房间</span>
+                <span>队长指挥</span>
+              </div>
+              <div class="voxel-mode-actions">
+                <button type="button" class="primary-link voxel-start-btn" data-voxel-start>单机模式</button>
+                <button type="button" class="secondary-link voxel-start-btn is-secondary" data-voxel-open-rooms>联机模式</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="voxel-flow-screen" data-voxel-room-browser hidden>
+            <div class="voxel-overlay-card voxel-flow-card voxel-room-browser">
+              <p class="eyebrow">联机房间</p>
+              <h2>选择房间或创建新房</h2>
+              <p>这是联机的独立页面。右侧固定保留创建房间入口，左侧显示当前有效房间列表。</p>
+              <div class="voxel-room-browser-shell">
+                <section class="voxel-room-create-card">
+                  <span class="side-label">新建房间</span>
+                  <h3>创建自定义房</h3>
+                  <p>创建后你会进入独立的队伍配置页，在那里决定空位开放还是关闭。</p>
+                  <div class="voxel-room-browser-actions">
+                    <button type="button" class="primary-link voxel-start-btn" data-voxel-room-create>创建房间</button>
+                    <button type="button" class="secondary-link voxel-start-btn is-secondary" data-voxel-room-back>返回模式选择</button>
+                  </div>
+                </section>
+                <section class="voxel-room-list-panel">
+                  <div class="voxel-room-list-head">
+                    <span class="side-label">可用房间</span>
+                    <button type="button" class="secondary-link voxel-start-btn is-secondary" data-voxel-room-refresh>刷新列表</button>
+                  </div>
+                  <div class="voxel-room-list" data-voxel-room-list></div>
+                </section>
+              </div>
+            </div>
+          </section>
+
+          <section class="voxel-flow-screen" data-voxel-lobby-panel hidden>
+            <div class="voxel-overlay-card voxel-flow-card voxel-lobby-card">
+              <p class="eyebrow">队伍配置</p>
+              <h2 data-voxel-lobby-title>等待房主开始</h2>
+              <p data-voxel-lobby-subtitle>这是独立的队伍配置页。创建人固定在红队队长位，其他位置由房主决定开放还是关闭。</p>
+              <div class="voxel-lobby-meta">
+                <span>房间号</span>
+                <strong data-voxel-lobby-room-code>-</strong>
+              </div>
+              <div class="voxel-team-board">
+                <section class="voxel-team-column red-team">
+                  <header>
+                    <span>红队</span>
+                    <strong>进攻 / 房主队</strong>
+                  </header>
+                  <div data-voxel-team-red></div>
+                </section>
+                <section class="voxel-team-column blue-team">
+                  <header>
+                    <span>蓝队</span>
+                    <strong>防守 / 反击队</strong>
+                  </header>
+                  <div data-voxel-team-blue></div>
+                </section>
+              </div>
+              <div class="voxel-room-browser-actions">
+                <button type="button" class="secondary-link voxel-start-btn is-secondary" data-voxel-lobby-leave>离开房间</button>
+                <button type="button" class="primary-link voxel-start-btn" data-voxel-lobby-start>房主开始对局</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="voxel-overlay" data-voxel-respawn hidden>
+          <div class="voxel-overlay-card respawn-state">
+            <p class="eyebrow">你已倒下</p>
+            <h2 data-voxel-respawn-title>正在等待复活</h2>
+            <p data-voxel-respawn-summary>保持观察，系统会在短暂时间后重新投入战场。</p>
+            <div class="voxel-end-actions">
+              <button type="button" class="primary-link voxel-start-btn" data-voxel-force-restart>重新开始</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="voxel-overlay" data-voxel-pause hidden>
+          <div class="voxel-overlay-card pause-state">
+            <p class="eyebrow">暂停中</p>
+            <div class="pause-icon">▶</div>
+            <h2 data-voxel-pause-title>战斗已暂停</h2>
+            <p data-voxel-pause-summary>按 Esc 释放了操作，你可以点击继续游戏重新进入战斗。</p>
+            <div class="voxel-end-actions">
+              <button type="button" class="primary-link voxel-start-btn" data-voxel-resume>继续游戏</button>
+              <button type="button" class="secondary-link voxel-start-btn is-secondary" data-voxel-pause-exit>结束本局</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="voxel-overlay" data-voxel-gameover hidden>
+          <div class="voxel-overlay-card end-state">
+            <p class="eyebrow">Game Over</p>
+            <h2 data-voxel-end-title>战斗结束</h2>
+            <p data-voxel-end-summary>正在结算你的表现和金币奖励。</p>
+            <div class="voxel-end-stats" data-voxel-end-stats>
+              <div class="voxel-end-stat"><span>击杀</span><strong data-voxel-end-kills>0</strong></div>
+              <div class="voxel-end-stat"><span>存活</span><strong data-voxel-end-time>0s</strong></div>
+              <div class="voxel-end-stat"><span>红队击杀</span><strong data-voxel-end-red-kills>0</strong></div>
+              <div class="voxel-end-stat"><span>蓝队击杀</span><strong data-voxel-end-blue-kills>0</strong></div>
+              <div class="voxel-end-stat"><span>MVP</span><strong data-voxel-end-mvp>待定</strong></div>
+              <div class="voxel-end-stat emphasis"><span>金币</span><strong data-voxel-end-coins>0</strong></div>
+            </div>
+            <div class="voxel-end-actions">
+              <button type="button" class="primary-link voxel-start-btn" data-voxel-restart>再来一局</button>
+              <button type="button" class="secondary-link return-link" data-voxel-return-mode>返回模式选择</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="voxel-bottom-panel">
+        <p class="voxel-status" data-voxel-status>点击开始后进入鼠标锁定模式，和友军一起守住竞技场。</p>
+        <div class="voxel-result" data-voxel-result>结算后会通过回调和金币接口把结果同步回主站。</div>
+      </div>
+    </section>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+  <script type="module" src="{{ url_for('static', path='voxel-fps.js') }}?v=20260318-voxel-fps-5"></script>
+{% endblock %}
