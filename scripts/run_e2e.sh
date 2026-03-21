@@ -2,13 +2,19 @@
 set -euo pipefail
 
 export BASE_URL="${BASE_URL:-http://127.0.0.1:18427}"
+export FPS_BASE_URL="${FPS_BASE_URL:-http://127.0.0.1:18428}"
 UVICORN_HOST="${UVICORN_HOST:-0.0.0.0}"
 UVICORN_PORT="${UVICORN_PORT:-18427}"
+FPS_PORT="${FPS_PORT:-18428}"
 SERVER_PID=""
+FPS_SERVER_PID=""
 
 cleanup() {
   if [[ -n "${SERVER_PID}" ]] && ps -p "${SERVER_PID}" >/dev/null 2>&1; then
     kill "${SERVER_PID}" || true
+  fi
+  if [[ -n "${FPS_SERVER_PID}" ]] && ps -p "${FPS_SERVER_PID}" >/dev/null 2>&1; then
+    kill "${FPS_SERVER_PID}" || true
   fi
 }
 trap cleanup EXIT
@@ -23,6 +29,8 @@ pip install -r requirements.txt
 playwright install chromium
 
 python scripts/init_db.py
+
+export FPS_PUBLIC_BASE_URL="${FPS_BASE_URL}"
 
 echo "[1/5] 检查服务是否已在运行..."
 if curl -fsS "${BASE_URL}/health" >/dev/null 2>&1; then
@@ -43,6 +51,25 @@ else
   fi
 fi
 
+echo "[1.5/5] 检查 Standalone FPS 服务是否已在运行..."
+if curl -fsS "${FPS_BASE_URL}/health" >/dev/null 2>&1; then
+  echo "已有运行中的 FPS 服务，跳过启动。"
+else
+  echo "启动本地 Standalone FPS 服务..."
+  python -m uvicorn app.fps_main:app --host "${UVICORN_HOST}" --port "${FPS_PORT}" --log-level warning >/tmp/tamapet-fps-uvicorn.log 2>&1 &
+  FPS_SERVER_PID=$!
+  for _ in {1..30}; do
+    if curl -fsS "${FPS_BASE_URL}/health" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 0.5
+  done
+  if ! curl -fsS "${FPS_BASE_URL}/health" >/dev/null 2>&1; then
+    echo "无法启动 Standalone FPS 服务，查看 /tmp/tamapet-fps-uvicorn.log" >&2
+    exit 1
+  fi
+fi
+
 echo "[2/5] 服务可访问，开始运行 E2E 测试..."
 pytest tests/e2e -q
 
@@ -52,7 +79,12 @@ if [[ -n "${SERVER_PID}" ]]; then
   echo "[4/5] 停止本地 uvicorn 服务..."
   cleanup
 else
-  echo "[4/5] 保留已有服务运行"
+  if [[ -n "${FPS_SERVER_PID}" ]]; then
+    echo "[4/5] 停止本地 FPS 服务..."
+    cleanup
+  else
+    echo "[4/5] 保留已有服务运行"
+  fi
 fi
 
 echo "[5/5] 完成"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from ..config import settings
 from .security import generate_token
 
 
@@ -36,6 +37,7 @@ def template_context(request: Request, **kwargs):
         "request": request,
         "csrf_token": ensure_csrf_token(request),
         "flashes": pop_flashes(request),
+        "fps_public_base_url": settings.fps_public_base_url,
     }
     context.update(kwargs)
     return context

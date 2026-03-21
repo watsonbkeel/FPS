@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
+from ..config import settings
 from ..db import SessionLocal, get_db
 from ..models import Pet
 from ..services.auth_service import current_user
@@ -100,26 +101,9 @@ def shooting_game_page(request: Request, pet_id: int, db: Session = Depends(get_
 
 
 @router.get("/voxel-fps", response_class=HTMLResponse)
-def voxel_fps_game_page(request: Request, pet_id: int, db: Session = Depends(get_db)):
-    user, pet = _require_pet_owner(db, request, pet_id)
-    if not user:
-        return redirect("/login")
-    if not pet:
-        flash(request, "找不到该宠物", "error")
-        return redirect("/dashboard")
-
-    refresh_pet(db, pet, apply_hosting=False)
-    db.commit()
-    return request.app.state.templates.TemplateResponse(
-        "pets/voxel_fps.html",
-        template_context(
-            request,
-            current_user=user,
-            pet=pet,
-            return_to_dashboard=f"/dashboard#pet-card-{pet.id}",
-            match_duration_seconds=MATCH_DURATION_SECONDS,
-        ),
-    )
+def voxel_fps_game_page(request: Request, pet_id: int):
+    _ = (request, pet_id)
+    return redirect(f"{settings.fps_public_base_url}/")
 
 
 @router.get("/voxel-fps/rooms")
@@ -306,18 +290,15 @@ def voxel_fps_claim_multiplayer_reward(
         bool(player_result.get("win_status", False)),
         int(player_result.get("time_alive", 0)),
     )
-    reward_result = claim_mini_game_reward(
-        db,
-        pet,
-        game_type="voxel_fps",
-        difficulty="normal",
-        score=score,
-        weapon="voxel_rifle",
-    )
-    db.commit()
     return JSONResponse({
         "ok": True,
-        **reward_result,
+        "game_label": "方块战场",
+        "difficulty_label": "标准",
+        "weapon_label": "长枪",
+        "score": score,
+        "reward": 0,
+        "coins_after": pet.coins,
+        "message": "方块 FPS 已迁移为独立站入口，不再发放主站金币。",
         "winner_team": player_result.get("winner_team"),
         "red_kills": player_result.get("red_kills", 0),
         "blue_kills": player_result.get("blue_kills", 0),

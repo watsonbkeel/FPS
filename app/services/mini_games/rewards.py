@@ -71,6 +71,32 @@ def claim_mini_game_reward(
 
     normalized_score = max(0, min(100, int(score)))
     rule = MINI_GAME_RULES[game_type]
+    if game_type == "voxel_fps":
+        message = f"{pet.name} 完成了{rule['label']}，得分 {normalized_score}。该模式已改为独立站入口，不再发放主站金币"
+        log_event(
+            db,
+            pet=pet,
+            event_type="mini_game",
+            message=message,
+            metadata=_coin_metadata(
+                0,
+                pet,
+                f"mini_game_{game_type}",
+                game_type=game_type,
+                difficulty=difficulty,
+                weapon=weapon,
+                score=normalized_score,
+            ),
+        )
+        return {
+            "game_label": rule["label"],
+            "difficulty_label": MINI_GAME_DIFFICULTIES[difficulty],
+            "weapon_label": MINI_GAME_WEAPONS.get(weapon) if weapon else None,
+            "score": normalized_score,
+            "reward": 0,
+            "coins_after": pet.coins,
+            "message": message,
+        }
     weapon_bonus = 1 if game_type == "shooting" and weapon == "coastal_cannon" and normalized_score >= 60 else 0
     reward = min(rule["max_reward"], rule["base"][difficulty] + round(normalized_score / rule["scale"]) + weapon_bonus)
     pet.coins += reward

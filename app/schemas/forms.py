@@ -51,6 +51,20 @@ class LoginForm(BaseModel):
         return value
 
 
+class FpsNicknameForm(BaseModel):
+    nickname: str = Field(min_length=2, max_length=20)
+
+    @field_validator("nickname")
+    @classmethod
+    def normalize_nickname(cls, value: str) -> str:
+        normalized = " ".join(value.split()).strip()
+        if len(normalized) < 2:
+            raise ValueError("昵称至少需要 2 个字符")
+        if any(char in normalized for char in "<>\n\r\t"):
+            raise ValueError("昵称包含不允许的字符")
+        return normalized
+
+
 class PetCreateForm(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     species: str

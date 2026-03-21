@@ -141,7 +141,13 @@ class VoxelRoomService:
         local = user.email.split("@", 1)[0].strip() if user.email else "player"
         return local[:18] or f"player-{user.id}"
 
+    def _normalize_label(self, label: str) -> str:
+        normalized = " ".join((label or "").split()).strip()
+        return normalized[:18] or "player"
+
     def _room_title(self, label: str, pet_name: str) -> str:
+        if not pet_name:
+            return f"{label} 的房间"
         return f"{label} / {pet_name} 的房间"
 
     def _room_match_payload(self, room: Room) -> dict[str, Any]:
@@ -238,23 +244,27 @@ class VoxelRoomService:
         room.host_user_id = next_host.user_id
 
     def create_room(self, user: User, pet_id: int, pet_name: str) -> dict[str, Any]:
-        label = self._display_label(user)
+        return self.create_room_for_identity(user_id=user.id, label=self._display_label(user), pet_id=pet_id, pet_name=pet_name)
+
+    def create_room_for_identity(self, *, user_id: int, label: str, pet_id: int = 0, pet_name: str = "") -> dict[str, Any]:
+        normalized_label = self._normalize_label(label)
+        resolved_pet_name = pet_name or normalized_label
         with self._lock:
             self._cleanup_locked()
             room_id = uuid.uuid4().hex[:8]
             player_id = uuid.uuid4().hex
             room = Room(
                 room_id=room_id,
-                title=self._room_title(label, pet_name),
+                title=self._room_title(normalized_label, pet_name),
                 host_player_id=player_id,
-                host_user_id=user.id,
+                host_user_id=user_id,
             )
             room.members[player_id] = RoomMember(
                 player_id=player_id,
-                user_id=user.id,
-                label=label,
+                user_id=user_id,
+                label=normalized_label,
                 pet_id=pet_id,
-                pet_name=pet_name,
+                pet_name=resolved_pet_name,
                 team=TEAM_RED,
                 slot_index=0,
                 is_host=True,
@@ -265,12 +275,16 @@ class VoxelRoomService:
         return {"player_id": player_id, "room": payload}
 
     def join_room(self, room_id: str, user: User, pet_id: int, pet_name: str) -> dict[str, Any]:
-        label = self._display_label(user)
+        return self.join_room_for_identity(room_id, user_id=user.id, label=self._display_label(user), pet_id=pet_id, pet_name=pet_name)
+
+    def join_room_for_identity(self, room_id: str, *, user_id: int, label: str, pet_id: int = 0, pet_name: str = "") -> dict[str, Any]:
+        normalized_label = self._normalize_label(label)
+        resolved_pet_name = pet_name or normalized_label
         with self._lock:
             room = self._rooms.get(room_id)
             if not room:
                 raise ValueError("房间不存在")
-            existing = next((member for member in room.members.values() if member.user_id == user.id), None)
+            existing = next((member for member in room.members.values() if member.user_id == user_id), None)
             if existing:
                 existing.connected = False
                 existing.disconnected_at = None
@@ -292,10 +306,10 @@ class VoxelRoomService:
             player_id = uuid.uuid4().hex
             room.members[player_id] = RoomMember(
                 player_id=player_id,
-                user_id=user.id,
-                label=label,
+                user_id=user_id,
+                label=normalized_label,
                 pet_id=pet_id,
-                pet_name=pet_name,
+                pet_name=resolved_pet_name,
                 team=team,
                 slot_index=slot_index,
             )

@@ -77,8 +77,10 @@ const claimUrl = page.dataset.claimUrl || '';
 const roomBaseUrl = page.dataset.roomBaseUrl || '';
 const roomWsTemplate = page.dataset.roomWsTemplate || '';
 const userLabel = (page.dataset.userLabel || petName || 'player').split('@', 1)[0];
+const standaloneMode = page.dataset.standalone === 'true';
+const playerLabelMode = page.dataset.playerLabelMode || 'id';
 const matchDurationSeconds = Number(page.dataset.matchDuration || 300) || 300;
-const roomSessionStorageKey = `tamapet-voxel-room-${petId}`;
+const roomSessionStorageKey = standaloneMode ? `voxel-fps-room-${userLabel}` : `tamapet-voxel-room-${petId}`;
 
 const TEAM_FRIENDLY = 'friendly';
 const TEAM_ENEMY = 'enemy';
@@ -234,7 +236,29 @@ let mobileMoveId = null;
 let mobileMoveVector = new THREE.Vector2();
 let mobileLookLast = null;
 let mobileFireHeld = false;
-let cachedMobileMode = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+
+function detectMobileMode() {
+  return window.matchMedia('(hover: none), (pointer: coarse)').matches
+    || ('maxTouchPoints' in navigator && navigator.maxTouchPoints > 0)
+    || ('ontouchstart' in window);
+}
+
+let cachedMobileMode = detectMobileMode();
+
+function applyMobileOverrides() {
+  if (cachedMobileMode && mobileControls) {
+    mobileControls.style.display = 'flex';
+    document.documentElement.style.overscrollBehavior = 'none';
+    document.body.style.overscrollBehavior = 'none';
+  } else if (mobileControls) {
+    mobileControls.style.display = '';
+    document.documentElement.style.overscrollBehavior = '';
+    document.body.style.overscrollBehavior = '';
+  }
+}
+
+applyMobileOverrides();
+
 let playerStance = 'stand';
 let playerHeight = PLAYER_HEIGHT;
 let currentWeapon = 'voxel_rifle';
@@ -575,6 +599,9 @@ function renderTeamSlots(teamEl, room, team) {
 }
 
 function humanDisplayLabel(userId, fallback = userLabel) {
+  if (playerLabelMode === 'nickname' && fallback) {
+    return fallback;
+  }
   return userId ? `ID ${userId}` : fallback;
 }
 
@@ -668,7 +695,7 @@ function buildLocalPlayerState() {
     player_id: multiplayerState.playerId,
     user_id: seat?.user_id || null,
     team: absoluteFriendlyTeam,
-    label: humanDisplayLabel(seat?.user_id, userLabel),
+    label: humanDisplayLabel(seat?.user_id, seat?.label || userLabel),
     x: playerObject.position.x,
     y: playerObject.position.y,
     z: playerObject.position.z,
@@ -681,6 +708,17 @@ function buildLocalPlayerState() {
     kills: playerKills,
     deaths: actorStats.get('local-player')?.deaths || 0,
   };
+}
+
+function seedLocalPlayerStats() {
+  actorStats.set('local-player', {
+    id: 'local-player',
+    label: humanDisplayLabel(currentRoomSeat()?.user_id, currentRoomSeat()?.label || userLabel),
+    team: absoluteFriendlyTeam,
+    kills: playerKills,
+    deaths: actorStats.get('local-player')?.deaths || 0,
+    isHuman: true,
+  });
 }
 
 function buildHostSnapshot(remaining) {
@@ -739,6 +777,15 @@ function applyHostSnapshot(snapshot) {
         playerAlive = human.alive;
         playerKills = human.kills || playerKills;
         killsEl.textContent = String(playerKills);
+        const localStat = actorStats.get('local-player');
+        if (localStat) {
+          localStat.kills = human.kills || 0;
+          localStat.deaths = human.deaths || 0;
+          localStat.team = human.team || localStat.team;
+          localStat.label = human.label || localStat.label;
+        } else {
+          seedLocalPlayerStats();
+        }
         return;
       }
       applyRemoteActorState(human.player_id, human);
@@ -831,8 +878,14 @@ async function claimMultiplayerReward(finalPayload) {
   }
   multiplayerState.claimCompleted = true;
   clearRoomSession();
-  endCoinsEl.textContent = String(data.reward ?? 0);
-  setResultMessage(`${data.game_label || '方块战场'}联机结算完成：获得 ${data.reward ?? 0} 金币，当前剩余 ${data.coins_after ?? '-'} 金币。`, 'success');
+  const resolvedMetric = standaloneMode ? (data.score ?? 0) : (data.reward ?? 0);
+  endCoinsEl.textContent = String(resolvedMetric);
+  setResultMessage(
+    standaloneMode
+      ? `${data.game_label || '方块战场'}联机结算完成：你的个人评分为 ${resolvedMetric}。`
+      : `${data.game_label || '方块战场'}联机结算完成：获得 ${data.reward ?? 0} 金币，当前剩余 ${data.coins_after ?? '-'} 金币。`,
+    'success',
+  );
   const localResult = findMyMatchResult(finalPayload);
   notifyExternal({
     earnedCoins: data.reward ?? 0,
@@ -2799,7 +2852,7 @@ function buildMultiplayerPlayerResults(winnerTeam, elapsedSeconds) {
   const localDeaths = actorStats.get('local-player')?.deaths || 0;
   results.push({
     player_id: multiplayerState.playerId,
-    label: humanDisplayLabel(currentRoomSeat()?.user_id, userLabel),
+    label: humanDisplayLabel(currentRoomSeat()?.user_id, currentRoomSeat()?.label || userLabel),
     team: absoluteFriendlyTeam,
     kills: playerKills,
     deaths: localDeaths,
@@ -2886,16 +2939,27 @@ function endGame(winStatus) {
   fetch(claimUrl, { method: 'POST', body: form, headers: { 'X-Requested-With': 'fetch' } })
     .then((response) => response.json())
     .then((data) => {
-      const confirmedCoins = data.reward ?? localCoins;
-      earnedCoins = confirmedCoins;
-      endCoinsEl.textContent = String(confirmedCoins);
-      setResultMessage(`${data.game_label || '方块战场'}结算完成：获得 ${confirmedCoins} 金币，当前剩余 ${data.coins_after ?? '-'} 金币。`, 'success');
-      notifyExternal({ earnedCoins: confirmedCoins, kills: playerKills, winStatus, timeAlive });
+      const resolvedMetric = standaloneMode ? (data.score ?? score) : (data.reward ?? localCoins);
+      earnedCoins = standaloneMode ? 0 : (data.reward ?? localCoins);
+      endCoinsEl.textContent = String(resolvedMetric);
+      setResultMessage(
+        standaloneMode
+          ? `${data.game_label || '方块战场'}结算完成：你的个人评分为 ${resolvedMetric}。`
+          : `${data.game_label || '方块战场'}结算完成：获得 ${resolvedMetric} 金币，当前剩余 ${data.coins_after ?? '-'} 金币。`,
+        'success',
+      );
+      notifyExternal({ earnedCoins, kills: playerKills, winStatus, timeAlive });
     })
     .catch(() => {
-      earnedCoins = localCoins;
-      setResultMessage(`本地结算：预计获得 ${localCoins} 金币（接口异常，未能确认服务器奖励）。`, 'warning');
-      notifyExternal({ earnedCoins: localCoins, kills: playerKills, winStatus, timeAlive });
+      earnedCoins = standaloneMode ? 0 : localCoins;
+      endCoinsEl.textContent = String(standaloneMode ? score : localCoins);
+      setResultMessage(
+        standaloneMode
+          ? `本地结算完成：你的个人评分为 ${score}。`
+          : `本地结算：预计获得 ${localCoins} 金币（接口异常，未能确认服务器奖励）。`,
+        'warning',
+      );
+      notifyExternal({ earnedCoins, kills: playerKills, winStatus, timeAlive });
     });
 }
 
@@ -2906,7 +2970,6 @@ function resetRound() {
   teamScores = { [ABS_TEAM_RED]: 0, [ABS_TEAM_BLUE]: 0 };
   multiplayerState.teamCommands = { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null };
   actorStats = new Map();
-  actorStats.set('local-player', { id: 'local-player', label: humanDisplayLabel(currentRoomSeat()?.user_id, userLabel), team: absoluteFriendlyTeam, kills: 0, deaths: 0, isHuman: true });
   playerStance = 'stand';
   playerHeight = PLAYER_HEIGHT;
   respawnTimer = 0;
@@ -2935,6 +2998,7 @@ function resetRound() {
       [ABS_TEAM_BLUE]: multiplayerState.room.teams[ABS_TEAM_BLUE].filter((seat) => seat.seat_state === 'closed').map((seat) => seat.slot_index),
     },
   } : null);
+  seedLocalPlayerStats();
   hitMarker.classList.remove('is-active');
   hitMarkerTimer = 0;
   killfeed.innerHTML = '';
@@ -2948,7 +3012,7 @@ function resetRound() {
     scopeOverlay.hidden = true;
   }
   setWeapon('voxel_rifle', false);
-  setResultMessage('结算后会通过回调和金币接口把结果同步回主站。');
+  setResultMessage(standaloneMode ? '本页会直接显示你的个人评分和战斗结果，不依赖主站金币接口。' : '结算后会通过回调和金币接口把结果同步回主站。');
   gameOverOverlay.hidden = true;
   respawnOverlay.hidden = true;
   pauseOverlay.hidden = true;
@@ -2969,7 +3033,6 @@ function respawnPlayer() {
   healthEl.textContent = String(PLAYER_MAX_HEALTH);
   if (!gameEnded) {
     gamePaused = false;
-    controls.lock();
   }
 }
 
@@ -3350,7 +3413,8 @@ function handleKeyUp(event) {
 }
 
 window.addEventListener('resize', () => {
-  cachedMobileMode = window.matchMedia('(hover: none), (pointer: coarse)').matches;
+  cachedMobileMode = detectMobileMode();
+  applyMobileOverrides();
   updateMobileWeaponButtons();
 });
 window.addEventListener('keydown', handleKeyDown);
@@ -3363,7 +3427,18 @@ document.addEventListener('visibilitychange', () => {
 });
 
 document.addEventListener('mousedown', (event) => {
-  if (!gameRunning || !pointerLocked) return;
+  if (!gameRunning) return;
+
+  if (!pointerLocked && !isMobileMode()) {
+    if (event.target.closest('.voxel-overlay') || event.target.closest('button') || event.target.closest('.voxel-mobile-controls')) {
+      return;
+    }
+    controls.lock();
+    return;
+  }
+
+  if (!pointerLocked) return;
+
   if (event.button === 0) {
     playerShoot(performance.now());
   }
@@ -3443,12 +3518,18 @@ mobileWeaponButtons.forEach((button) => {
 
 stage.addEventListener('touchstart', (event) => {
   if (isMobileMode()) {
+    if (event.target.closest('.voxel-overlay') || event.target.closest('button')) {
+      return;
+    }
     event.preventDefault();
   }
 }, { passive: false });
 
 stage.addEventListener('touchmove', (event) => {
   if (isMobileMode()) {
+    if (event.target.closest('.voxel-overlay') || event.target.closest('button')) {
+      return;
+    }
     event.preventDefault();
   }
 }, { passive: false });

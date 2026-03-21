@@ -1,0 +1,45 @@
+{% extends "fps/base.html" %}
+
+{% block title %}进入方块战场{% endblock %}
+
+{% block content %}
+<section class="fps-landing-shell">
+  <div class="fps-landing-copy">
+    <p class="eyebrow">Standalone FPS</p>
+    <h1>直接填昵称，马上开打</h1>
+    <p class="fps-landing-lead">这是从 Tamapet 主站里拆出来的独立版方块 FPS。你不需要注册登录，只要输入一个昵称，就能直接进入单机或联机模式。</p>
+    <div class="fps-landing-points">
+      <span>独立端口部署</span>
+      <span>昵称即身份</span>
+      <span>单机 / 联机共用</span>
+    </div>
+  </div>
+
+  <section class="fps-entry-card">
+    <span class="side-label">开始游戏</span>
+    <h2>输入你的昵称</h2>
+    <p>昵称会写入本地会话，用来显示在房间和战斗里。后续可以随时更换。</p>
+    <form method="post" action="/enter" data-fps-nickname-form>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="modern-label" for="fps-nickname">昵称</label>
+      <input
+        id="fps-nickname"
+        name="nickname"
+        type="text"
+        maxlength="20"
+        class="modern-input"
+        data-fps-nickname-input
+        value="{{ fps_identity.nickname if fps_identity else '' }}"
+        placeholder="例如：StormFox"
+        autocomplete="nickname"
+      >
+      <div class="fps-entry-actions">
+        <button type="submit" class="primary-link fps-entry-button">进入方块战场</button>
+        {% if fps_identity %}
+          <a href="/play" class="secondary-link fps-entry-button is-secondary">继续当前昵称</a>
+        {% endif %}
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}

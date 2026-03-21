@@ -4,6 +4,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect
 
 BASE_URL = os.getenv("BASE_URL", "http://127.0.0.1:18427")
+FPS_BASE_URL = os.getenv("FPS_BASE_URL", "http://127.0.0.1:18428")
 
 
 def unique_email():
@@ -31,7 +32,10 @@ def open_voxel_fps_for_fresh_pet(page: Page, pet_name: str):
 
     page.goto(f"{BASE_URL}/dashboard")
     page.locator("[data-pet-card]").first.get_by_role("link", name="方块 FPS").click()
-    expect(page).to_have_url(re.compile(r"/pets/\d+/mini-games/voxel-fps"))
+    expect(page).to_have_url(f"{FPS_BASE_URL}/")
+    page.get_by_label("昵称").fill(pet_name)
+    page.get_by_role("button", name="进入方块战场").click()
+    expect(page).to_have_url(f"{FPS_BASE_URL}/play")
 
 
 
@@ -235,7 +239,10 @@ def test_voxel_fps_page_loads_from_dashboard(page: Page):
 
     page.goto(f"{BASE_URL}/dashboard")
     page.locator("[data-pet-card]").first.get_by_role("link", name="方块 FPS").click()
-    expect(page).to_have_url(re.compile(r"/pets/\d+/mini-games/voxel-fps"))
+    expect(page).to_have_url(f"{FPS_BASE_URL}/")
+    page.get_by_label("昵称").fill("方块战场测试玩家")
+    page.get_by_role("button", name="进入方块战场").click()
+    expect(page).to_have_url(f"{FPS_BASE_URL}/play")
     expect(page.get_by_role("heading", name="方块战场")).to_be_visible()
     expect(page.get_by_role("heading", name="选择作战模式")).to_be_visible()
     expect(page.get_by_role("button", name="单机模式")).to_be_visible()
@@ -260,7 +267,10 @@ def test_voxel_fps_multiplayer_lobby_flow(page: Page, browser: Browser):
         target_page.get_by_role("button", name="创建宠物").click()
         target_page.goto(f"{BASE_URL}/dashboard")
         target_page.locator("[data-pet-card]").first.get_by_role("link", name="方块 FPS").click()
-        expect(target_page).to_have_url(re.compile(r"/pets/\d+/mini-games/voxel-fps"))
+        expect(target_page).to_have_url(f"{FPS_BASE_URL}/")
+        target_page.get_by_label("昵称").fill(pet_name)
+        target_page.get_by_role("button", name="进入方块战场").click()
+        expect(target_page).to_have_url(f"{FPS_BASE_URL}/play")
 
     second_context = browser.new_context()
     second_page = second_context.new_page()

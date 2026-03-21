@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Tamapet FPS{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', path='fps-standalone.css') }}?v=20260319-fps-standalone-1">
+  {% block head_extra %}{% endblock %}
+</head>
+<body class="fps-shell-body">
+  <header class="fps-site-header">
+    <div class="fps-site-header-inner">
+      <a class="fps-brand" href="/">Voxel Arena</a>
+      <nav class="fps-nav-links">
+        {% if fps_identity %}
+          <span class="fps-player-chip">当前昵称：{{ fps_identity.nickname }}</span>
+          <a href="/?change=1">更换昵称</a>
+          <a href="/play">进入战场</a>
+          <form method="post" action="/logout" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="link-button">退出昵称</button>
+          </form>
+        {% else %}
+          <a href="/">输入昵称</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="fps-page-shell {% block page_shell_class %}{% endblock %}">
+    {% if flashes %}
+      <section class="flash-stack">
+        {% for item in flashes %}
+          <div class="flash flash-{{ item.category }}">{{ item.message }}</div>
+        {% endfor %}
+      </section>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
