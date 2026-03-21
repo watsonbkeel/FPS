@@ -1,5 +1,5 @@
 [Unit]
-Description=Tamapet Standalone FPS Web App
+Description=Voxel FPS Web App
 After=network.target
 
 [Service]

@@ -1,90 +1,75 @@
-# Tamapet
+# 方块 FPS
 
-Tamapet 是一个“网页版拓麻歌子 / 线上电子宠物平台”MVP。  
-当前版本已经围绕最小闭环实现了注册登录、创建宠物、照顾、托管、圈子互动、商店、事件日志与简化代际系统。
+这是一个可独立部署的网页方块风格 FPS 项目。
 
-仓库当前同时包含一个可独立运行的 **Standalone 方块 FPS 站点**：
+当前公开定位就是 **Standalone Voxel FPS**：
+- 直接访问独立站地址进入游戏
+- 不需要注册登录，只需输入昵称
+- 支持单机 5v5、联机房间、移动端/iPad 触控
+- 支持独立端口部署与 FRP / 公网转发
 
-- 主站：`uvicorn app.main:app --port 18427`
-- FPS 独立站：`uvicorn app.fps_main:app --port 18428`
+## 当前能力
 
-主站里的“方块 FPS”按钮现在只作为跳转入口，默认会跳到 `FPS_PUBLIC_BASE_URL` 对应的独立站地址；方块 FPS 也不再给主站宠物结算金币。
-
-## 当前进度
-
-- [x] 目录结构与 SQLite 数据模型
-- [x] 注册 / 登录 / 退出
-- [x] 控制台、宠物详情、托管设置、家谱、商店、圈子页面
-- [x] 宠物喂食、玩耍、清理、睡觉、治病
-- [x] 基于 `last_tick_at` 的按小时状态推进
-- [x] 保命托管、生活托管、社交托管
-- [x] 圈子创建、加入、结构化互动
-- [x] 简化代际系统与家谱展示
-- [x] 固定商品与背包库存
-- [x] 主站与小游戏奖励/页面入口边界整理（外部 URL 保持不变）
-- [x] `pytest` 单测 + Playwright E2E
-- [x] Debian `systemd` 部署文件
+- 单机模式：玩家 + 友军 Bot vs 敌军 Bot
+- 联机模式：创建房间、加入房间、换队、关槽、开局、房间内同步
+- 昵称会话：无需账号体系
+- 移动端控件：摇杆、开火、跳跃、蹲下、武器切换、全屏
+- iPad Safari 兼容：触屏判定、Overlay 按钮点击、全屏按钮触摸
+- 游戏结算：展示战斗结果与个人评分，不绑定站外经济系统
 
 ## 技术栈
 
-- Python 3.11
+- Python 3.11+
 - FastAPI
-- SQLAlchemy
-- SQLite
-- Jinja2 + HTMX
+- Jinja2 模板
+- Three.js + PointerLockControls
+- WebSocket
 - pytest + Playwright
 - Debian + venv + systemd
 
-## 主要页面
+## 关键入口
 
-- `/`
-- `/register`
-- `/login`
-- `/dashboard`
-- `/pets/new`
-- `/pets/{id}`
-- `/pets/{id}/hosting`
-- `/pets/{id}/family`
-- `/shop`
-- `/circles`
-- `/circles/{id}`
-- `/health`
+- 应用入口：`app/fps_main.py`
+- 默认端口：`18428`
+- 主页：`/`
+- 游戏页：`/play`
+- 房间 API：`/api/rooms`
+- 健康检查：`/health`
 
 ## 目录结构
 
 ```text
 app/
-  main.py
   fps_main.py
-  config.py
-  db.py
-  constants.py
-  models/
-  schemas/
   routers/
-    mini_games.py
+    fps_site.py
   services/
+    fps_identity_service.py
     mini_games/
-  templates/
+      voxel_rooms.py
   static/
-  jobs/
-  utils/
+    voxel-fps.js
+    voxel-fps.css
+    fps-standalone.css
+    style.css
+  templates/
+    fps/
+      base.html
+      landing.html
+      game.html
 
-tests/
-  e2e/
-    test_pet_site.py
-  unit/
-    test_tick_service.py
-    test_hosting_service.py
-    test_circle_logic.py
-    test_breed_logic.py
+deploy/
+  voxel-fps.service
 
 scripts/
-  bootstrap.sh
-  init_db.py
-  seed_demo.py
-  run_e2e.sh
   run_fps.sh
+
+tests/
+  unit/
+    test_fps_standalone.py
+    test_voxel_fps_ipad_touch_regression.py
+    test_voxel_fps_mvp_regression.py
+    test_voxel_fps_redirect_*.py
 ```
 
 ## 本地启动
@@ -94,138 +79,60 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
-playwright install chromium
-python scripts/init_db.py
-uvicorn app.main:app --host 0.0.0.0 --port 18427
-```
-
-访问地址：
-
-- 本机：`http://127.0.0.1:18427`
-- 局域网：`http://<你的服务器IP>:18427`
-
-独立 FPS 站点：
-
-- 本机：`http://127.0.0.1:18428`
-- 局域网：`http://<你的服务器IP>:18428`
-
-如果你已经通过 FRPC 暴露公网地址，记得把 `.env` 中的 `FPS_PUBLIC_BASE_URL` 配成你的公网入口，这样主站按钮会直接跳到稳定外网地址。
-
-## 一键初始化
-
-```bash
-./scripts/bootstrap.sh
-```
-
-脚本会完成：
-
-- 创建 `.venv`
-- 安装依赖
-- 安装 Playwright Chromium
-- 复制 `.env.example` 为 `.env`
-- 初始化数据库和种子数据
-
-## 测试命令
-
-单元测试：
-
-```bash
-pytest tests/unit -q
-```
-
-E2E 测试：
-
-```bash
-pytest tests/e2e -q
-```
-
-完整 E2E 验证脚本：
-
-```bash
-./scripts/run_e2e.sh
-```
-
-## Standalone FPS 本地启动
-
-独立版方块 FPS 不依赖主站注册登录，只要求玩家先输入昵称再进入战场。
-
-```bash
-source .venv/bin/activate
 ./scripts/run_fps.sh
 ```
 
-也可以直接运行：
+或直接运行：
 
 ```bash
 source .venv/bin/activate
 uvicorn app.fps_main:app --host 0.0.0.0 --port 18428
 ```
 
-独立站主要路径：
+访问：
+- 本机：`http://127.0.0.1:18428`
+- 局域网：`http://<你的服务器IP>:18428`
 
-- `/`
-- `/play`
-- `/api/rooms`
-- `/health`
+如果你通过 FRP / FRPC 暴露公网地址，请把 `.env` 中的 `FPS_PUBLIC_BASE_URL` 配成外网入口，例如：
 
-## 默认种子数据
+```env
+FPS_PUBLIC_BASE_URL=http://bkeel.com:5871
+```
 
-当 `.env` 中 `SEED_DEMO=true` 时，初始化会创建：
+## 环境变量
 
-- 演示用户：`demo@tamapet.local`
-- 演示密码：`pass123456`
-- 演示宠物：`阿团`
-- 默认圈子：`新手圈`
-- 固定商店商品：`小饼干`、`简易药剂`、`小花束`
+常用配置：
+- `FPS_PORT`：独立站端口，默认 `18428`
+- `FPS_PUBLIC_BASE_URL`：公开访问地址，用于页面中生成外部入口
+- `FPS_SESSION_COOKIE_NAME`：昵称会话 cookie 名称
+- `SECRET_KEY`：会话签名密钥
 
-## Debian 部署
+## 测试
 
-1. 初始化环境
+运行核心单测：
 
 ```bash
-cd /root/tamapet
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
-playwright install chromium
-python scripts/init_db.py
+pytest tests/unit/test_fps_standalone.py -q
+pytest tests/unit/test_voxel_fps_ipad_touch_regression.py -q
+pytest tests/unit/test_voxel_fps_mvp_regression.py -q
 ```
 
-2. 启动测试服务
+运行所有单测：
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 18427
+pytest tests/unit -q
 ```
 
-3. 安装 systemd 服务
+## 部署
 
-```bash
-cp deploy/tamapet.service /etc/systemd/system/tamapet.service
-systemctl daemon-reload
-systemctl enable tamapet
-systemctl restart tamapet
-systemctl status tamapet
-```
+部署说明见：
+- `DEPLOY_DEBIAN.md`
+- `docs/DEPLOY_DEBIAN.md`
+- `docs/HANDOFF.md`
 
-4. 安装 Standalone FPS systemd 服务
+## 当前已知边界
 
-```bash
-cp deploy/tamapet-fps.service /etc/systemd/system/tamapet-fps.service
-systemctl daemon-reload
-systemctl enable tamapet-fps
-systemctl restart tamapet-fps
-systemctl status tamapet-fps
-```
-
-## 健康检查
-
-```bash
-curl http://127.0.0.1:18427/health
-```
-
-预期返回：
-
-```json
-{"status":"ok","service":"tamapet"}
-```
+- 联机房间当前仍是进程内内存状态
+- 不适合多实例共享房间
+- 进程重启后房间会丢失
+- `app/static/voxel-fps.js` 仍然是项目里最重的单文件，后续适合继续模块化切分

@@ -1,83 +1,57 @@
 # HANDOFF
 
-## 项目当前定位
+## 项目定位
 
-本仓库当前不是独立 FPS 仓库，而是：
+本仓库当前对外公开定位为 **方块 FPS 独立站**。
 
-- Tamapet 宠物主站
-- 海滩防线小游戏
-- 方块 FPS 小游戏
-- Standalone 方块 FPS 独立站
-
-其中 Standalone FPS 已支持单独端口部署，使用昵称会话进入，不再依赖主站注册登录。
-主站中的“方块 FPS”按钮现在仅作为跳转入口，目标地址由 `FPS_PUBLIC_BASE_URL` 决定。
+玩家流程：
+1. 打开首页
+2. 输入昵称
+3. 进入 `/play`
+4. 选择单机或联机
 
 ## 关键入口
 
-主站入口：
-
-- `app.main:app`
-- 默认端口：`18427`
-
-Standalone FPS 入口：
-
-- `app.fps_main:app`
+- FastAPI 入口：`app/fps_main.py`
 - 默认端口：`18428`
+- 健康检查：`/health`
+- 房间接口：`/api/rooms`
+- WebSocket：`/api/rooms/{room_id}/ws`
 
 ## 关键文件
 
-- `app/main.py`：Tamapet 主站 FastAPI 入口
-- `app/fps_main.py`：Standalone FPS FastAPI 入口
-- `app/routers/mini_games.py`：主站小游戏入口、主站版 voxel-fps 房间 API
-- `app/routers/fps_site.py`：独立站昵称入口、独立站房间 API、独立站 WS
-- `app/services/mini_games/voxel_rooms.py`：联机房间状态与广播逻辑
-- `app/services/fps_identity_service.py`：Standalone FPS 昵称会话
-- `app/static/voxel-fps.js`：主站版与独立版共用 FPS 核心逻辑
-- `app/templates/pets/voxel_fps.html`：主站版 FPS 页面
-- `app/templates/fps/game.html`：独立版 FPS 页面
-- `app/templates/fps/landing.html`：独立版昵称入口页
-- `deploy/tamapet.service`：主站 systemd
-- `deploy/tamapet-fps.service`：独立版 FPS systemd
+- `app/fps_main.py`
+- `app/routers/fps_site.py`
+- `app/services/fps_identity_service.py`
+- `app/services/mini_games/voxel_rooms.py`
+- `app/static/voxel-fps.js`
+- `app/static/voxel-fps.css`
+- `app/static/fps-standalone.css`
+- `app/templates/fps/base.html`
+- `app/templates/fps/landing.html`
+- `app/templates/fps/game.html`
+- `deploy/voxel-fps.service`
+- `scripts/run_fps.sh`
 
 ## 当前状态
 
-- 主站功能保持可用
-- 主站 E2E 回归通过
-- Standalone FPS 已支持：
-  - 昵称输入
-  - `/play` 直接进游戏
-  - 单机模式
-  - 联机房间创建 / 加入 / 换队 / 关槽 / 开局 / WebSocket
-  - 独立结算展示
-- 独立版不再写入主站宠物金币
-- 主站旧 voxel-fps 路由会直接跳转到独立站首页
+- Standalone 首页可用
+- 昵称会话可用
+- 单机模式可玩
+- 联机房间可创建 / 加入 / 开局 / 结算
+- iPad 触屏检测、Overlay 点击、全屏按钮点击已做兼容
+- 死亡后复活不会再因自动 pointer lock 导致渲染冻结
 
 ## 已知边界
 
-- `voxel_room_service` 仍是进程内内存房间
-- 不适合多实例共享房间
-- 进程重启后房间会丢失
-- `app/static/voxel-fps.js` 仍是高风险大文件
+- 房间是内存状态
+- 多实例共享房间尚未实现
+- `app/static/voxel-fps.js` 仍是高复杂度文件
+- 联机正确性仍建议继续靠回归测试保护
 
-## 本地启动
+## 接手建议
 
-主站：
-
-```bash
-source .venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 18427
-```
-
-Standalone FPS：
-
-```bash
-source .venv/bin/activate
-./scripts/run_fps.sh
-```
-
-## 交接建议
-
-1. 后续继续做 FPS 功能时，优先在 `app.fps_main` 入口下验证独立站体验
-2. 不要直接大拆 `app/static/voxel-fps.js`，先按小边界抽 helper
-3. 若要继续强化联机，优先补测试，再评估房间持久化
-4. 优先处理 git remote 中的敏感凭据风险
+1. 后续优先继续拆分 `app/static/voxel-fps.js`
+2. 继续增强联机状态一致性测试
+3. 真机验证 iPad Safari 与 Android Chrome
+4. 如需横向扩容，再评估房间持久化方案
