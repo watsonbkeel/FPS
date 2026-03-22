@@ -17,6 +17,7 @@ source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
 cp .env.example .env
+./scripts/bootstrap_fps.sh
 ```
 
 ## 关键环境变量

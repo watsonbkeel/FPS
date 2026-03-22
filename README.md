@@ -62,14 +62,18 @@ deploy/
   voxel-fps.service
 
 scripts/
+  bootstrap_fps.sh
   run_fps.sh
+  run_fps_e2e.sh
 
 tests/
-  unit/
-    test_fps_standalone.py
+  fps_unit/
+    test_voxel_fps_standalone.py
     test_voxel_fps_ipad_touch_regression.py
     test_voxel_fps_mvp_regression.py
-    test_voxel_fps_redirect_*.py
+    test_voxel_fps_standalone_contract.py
+  fps_e2e/
+    test_voxel_fps_site.py
 ```
 
 ## 本地启动
@@ -79,6 +83,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -U pip
 pip install -r requirements.txt
+./scripts/bootstrap_fps.sh
 ./scripts/run_fps.sh
 ```
 
@@ -112,15 +117,21 @@ FPS_PUBLIC_BASE_URL=http://bkeel.com:5871
 运行核心单测：
 
 ```bash
-pytest tests/unit/test_fps_standalone.py -q
-pytest tests/unit/test_voxel_fps_ipad_touch_regression.py -q
-pytest tests/unit/test_voxel_fps_mvp_regression.py -q
+pytest tests/fps_unit/test_voxel_fps_standalone.py -q
+pytest tests/fps_unit/test_voxel_fps_ipad_touch_regression.py -q
+pytest tests/fps_unit/test_voxel_fps_mvp_regression.py -q
 ```
 
-运行所有单测：
+运行所有 FPS 单测：
 
 ```bash
-pytest tests/unit -q
+pytest tests/fps_unit -q
+```
+
+运行 FPS E2E：
+
+```bash
+./scripts/run_fps_e2e.sh
 ```
 
 ## 部署

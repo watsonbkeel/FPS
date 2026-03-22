@@ -22,6 +22,12 @@
 - WebSocket 连接与消息处理
 - 房间状态缓存与恢复
 
+### 2.5 测试结构
+推荐保持：
+- `tests/fps_unit/`
+- `tests/fps_e2e/`
+- `scripts/run_fps_e2e.sh`
+
 ### 3. 结算层
 优先拆出：
 - MVP 计算

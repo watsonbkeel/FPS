@@ -44,7 +44,9 @@
 ## 常用验证
 
 ```bash
-pytest tests/unit -q
+pytest tests/fps_unit -q
+./scripts/bootstrap_fps.sh
 ./scripts/run_fps.sh
+./scripts/run_fps_e2e.sh
 curl http://127.0.0.1:18428/health
 ```

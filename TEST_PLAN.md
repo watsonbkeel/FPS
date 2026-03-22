@@ -16,10 +16,11 @@
 ## 推荐命令
 
 ```bash
-pytest tests/unit -q
-pytest tests/unit/test_fps_standalone.py -q
-pytest tests/unit/test_voxel_fps_ipad_touch_regression.py -q
-pytest tests/unit/test_voxel_fps_mvp_regression.py -q
+pytest tests/fps_unit -q
+pytest tests/fps_unit/test_voxel_fps_standalone.py -q
+pytest tests/fps_unit/test_voxel_fps_ipad_touch_regression.py -q
+pytest tests/fps_unit/test_voxel_fps_mvp_regression.py -q
+./scripts/run_fps_e2e.sh
 ```
 
 ## 重点人工验证

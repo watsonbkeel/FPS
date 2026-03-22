@@ -31,7 +31,11 @@
 - `app/templates/fps/landing.html`
 - `app/templates/fps/game.html`
 - `deploy/voxel-fps.service`
+- `scripts/bootstrap_fps.sh`
 - `scripts/run_fps.sh`
+- `scripts/run_fps_e2e.sh`
+- `tests/fps_unit/`
+- `tests/fps_e2e/`
 
 ## 当前状态
 
