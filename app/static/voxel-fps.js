@@ -109,6 +109,11 @@ const GRENADE_MAX_DAMAGE = 128;
 const GRENADE_BLAST_DURATION = 320;
 const COMMAND_FLAG_THROW_SPEED = 11.2;
 const COMMAND_FLAG_DURATION = 10000;
+const OPENING_COMMAND_DURATION = 14000;
+const OPENING_RALLY_Z = 10;
+const BOT_RADIUS = PLAYER_RADIUS * 0.78;
+const BOT_MAX_STEP_UP = 2.8;
+const BOT_MAX_PERCH_STEP_UP = 9.8;
 
 const WEAPON_CONFIG = {
   voxel_rifle: {
@@ -204,6 +209,7 @@ scene.add(mapGroup);
 
 const colliders = [];
 const coverAnchors = [];
+const highGroundPerches = [];
 const ladderZones = [];
 const botState = [];
 const playerShots = [];
@@ -211,6 +217,7 @@ const grenadeProjectiles = [];
 const grenadeBursts = [];
 const commandFlagProjectiles = [];
 const teamFlagMarkers = { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null };
+const teamFocusMarkers = { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null };
 const keyState = { w: false, a: false, s: false, d: false, space: false };
 
 let playerVelocity = new THREE.Vector3();
@@ -269,6 +276,7 @@ let teamScores = { [ABS_TEAM_RED]: 0, [ABS_TEAM_BLUE]: 0 };
 let actorStats = new Map();
 let actorLabels = new Map();
 let remotePlayers = new Map();
+let teamCombatSignals = { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null };
 let multiplayerState = {
   active: false,
   roomId: null,
@@ -523,6 +531,7 @@ function resetMultiplayerLobbyState(clearStorage = true) {
   multiplayerState.claimCompleted = false;
   multiplayerState.active = false;
   multiplayerState.latestRemaining = ROUND_DURATION;
+  teamCombatSignals = { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null };
   if (clearStorage) {
     clearRoomSession();
   }
@@ -948,7 +957,7 @@ function handleRoomSocketMessage(data) {
   }
   if (data.type === 'captain_command' && data.payload) {
     if (data.player_id !== multiplayerState.playerId) {
-      applyCaptainCommand(data.payload.team, { x: data.payload.x, z: data.payload.z }, data.player_id);
+      applyCaptainCommand(data.payload.team, { x: data.payload.x, y: data.payload.y || 0, z: data.payload.z }, data.player_id);
     }
     return;
   }
@@ -1131,6 +1140,36 @@ function clearTeamFlagMarker(team) {
   teamFlagMarkers[team] = null;
 }
 
+function clearTeamFocusMarker(team) {
+  const marker = teamFocusMarkers[team];
+  if (!marker) return;
+  scene.remove(marker.group);
+  teamFocusMarkers[team] = null;
+}
+
+function ensureTeamFocusMarker(team) {
+  let marker = teamFocusMarkers[team];
+  if (marker) {
+    return marker;
+  }
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.6, 0.06, 8, 24),
+    new THREE.MeshBasicMaterial({ color: team === absoluteFriendlyTeam ? '#68d391' : '#ff8a8a', transparent: true, opacity: 0.95 }),
+  );
+  ring.rotation.x = Math.PI / 2;
+  const beacon = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.08, 0.08, 1.3, 10),
+    new THREE.MeshBasicMaterial({ color: team === absoluteFriendlyTeam ? '#9ae6b4' : '#feb2b2', transparent: true, opacity: 0.75 }),
+  );
+  beacon.position.y = 0.72;
+  group.add(ring, beacon);
+  scene.add(group);
+  marker = { group, ring, beacon };
+  teamFocusMarkers[team] = marker;
+  return marker;
+}
+
 function placeTeamFlagMarker(team, point) {
   clearTeamFlagMarker(team);
   const marker = createCommandFlagModel();
@@ -1141,7 +1180,7 @@ function placeTeamFlagMarker(team, point) {
 }
 
 function applyCaptainCommand(team, point, commanderId) {
-  multiplayerState.teamCommands[team] = { x: point.x, z: point.z, expiresAt: performance.now() + COMMAND_FLAG_DURATION };
+  multiplayerState.teamCommands[team] = { x: point.x, y: point.y || 0, z: point.z, expiresAt: performance.now() + COMMAND_FLAG_DURATION, opening: false, manual: true };
   placeTeamFlagMarker(team, point.clone());
   if (commanderId === multiplayerState.playerId) {
     viewWeapon.userData.commandSwing = 420;
@@ -1153,14 +1192,125 @@ function applyCaptainCommand(team, point, commanderId) {
   addKillfeed(`${team === absoluteFriendlyTeam ? '我方' : '敌方'}队长发出集合指令`);
 }
 
+function teamForwardSign(team) {
+  return team === ABS_TEAM_RED ? -1 : 1;
+}
+
+function canIssueTeamCommand() {
+  return !multiplayerState.active || Boolean(multiplayerState.room && multiplayerState.room.current_slot_index === 0);
+}
+
+function getBotFormationOffset(bot) {
+  const slot = Math.max(0, Number(bot.formationSlot || 0));
+  const lateralPattern = [0, -6, 6, -2.8, 2.8];
+  const depthPattern = [0, 2.8, 2.8, 5.2, 5.2];
+  return {
+    x: lateralPattern[slot % lateralPattern.length],
+    z: depthPattern[slot % depthPattern.length],
+  };
+}
+
+function getCommandMoveTarget(bot, activeCommand) {
+  const forwardSign = teamForwardSign(bot.absoluteTeam);
+  const offset = getBotFormationOffset(bot);
+  return new THREE.Vector3(
+    activeCommand.x + offset.x,
+    activeCommand.y || 0,
+    activeCommand.z - forwardSign * offset.z,
+  );
+}
+
+function getOpeningRallyPoint(team) {
+  return new THREE.Vector3(0, 0, team === ABS_TEAM_RED ? OPENING_RALLY_Z : -OPENING_RALLY_Z);
+}
+
+function seedOpeningTeamCommands() {
+  [ABS_TEAM_RED, ABS_TEAM_BLUE].forEach((team) => {
+    const point = getOpeningRallyPoint(team);
+    multiplayerState.teamCommands[team] = {
+      x: point.x,
+      y: point.y || 0,
+      z: point.z,
+      expiresAt: performance.now() + OPENING_COMMAND_DURATION,
+      opening: true,
+      manual: false,
+    };
+    placeTeamFlagMarker(team, point.clone());
+  });
+}
+
+function enemyAbsoluteTeam(team) {
+  return team === ABS_TEAM_RED ? ABS_TEAM_BLUE : ABS_TEAM_RED;
+}
+
+function getBotLaneX(bot) {
+  return getBotFormationOffset(bot).x * bot.laneDiscipline;
+}
+
+function clampBotInsideBounds(position) {
+  const limit = MAP_HALF - PLAYER_BOUNDARY_MARGIN;
+  position.x = Math.max(-limit, Math.min(limit, position.x));
+  position.z = Math.max(-limit, Math.min(limit, position.z));
+  return position;
+}
+
+function chooseAssaultAnchor(bot) {
+  const objectiveZ = bot.absoluteTeam === ABS_TEAM_RED ? -26 : 26;
+  const laneX = getBotLaneX(bot);
+  const anchors = coverAnchors.filter((anchor) => (bot.absoluteTeam === ABS_TEAM_RED ? anchor.z < 30 : anchor.z > -30));
+  const pool = anchors.length ? anchors : coverAnchors;
+  return pool
+    .slice()
+    .sort((left, right) => {
+      const leftScore = Math.abs(left.x - laneX) * 0.9 + Math.abs(left.z - objectiveZ);
+      const rightScore = Math.abs(right.x - laneX) * 0.9 + Math.abs(right.z - objectiveZ);
+      return leftScore - rightScore;
+    })[Math.floor(Math.random() * Math.min(5, pool.length))] || new THREE.Vector3(laneX, 0, objectiveZ);
+}
+
+function chooseSniperPerch(bot) {
+  const objectiveZ = bot.absoluteTeam === ABS_TEAM_RED ? -22 : 22;
+  const laneX = getBotLaneX(bot);
+  const pool = highGroundPerches.filter((perch) => (bot.absoluteTeam === ABS_TEAM_RED ? perch.z < 38 : perch.z > -38));
+  if (!pool.length) {
+    return null;
+  }
+  return pool
+    .slice()
+    .sort((left, right) => {
+      const leftScore = Math.abs(left.x - laneX) * 0.8 + Math.abs(left.z - objectiveZ) * 0.75;
+      const rightScore = Math.abs(right.x - laneX) * 0.8 + Math.abs(right.z - objectiveZ) * 0.75;
+      return leftScore - rightScore;
+    })[Math.floor(Math.random() * Math.min(4, pool.length))] || null;
+}
+
+function resolveLadderApproach(destination) {
+  if ((destination.y || 0) <= 1.2 || !ladderZones.length) {
+    return destination.clone();
+  }
+  const ladder = ladderZones
+    .slice()
+    .sort((left, right) => {
+      const leftScore = Math.hypot(left.x - destination.x, left.z - destination.z) + Math.abs(left.topY - destination.y) * 0.35;
+      const rightScore = Math.hypot(right.x - destination.x, right.z - destination.z) + Math.abs(right.topY - destination.y) * 0.35;
+      return leftScore - rightScore;
+    })[0] || null;
+  if (!ladder) {
+    return destination.clone();
+  }
+  return new THREE.Vector3(ladder.x, 0, ladder.z);
+}
+
 function issueCaptainCommand(point = null) {
-  if (!multiplayerState.active || !multiplayerState.room || multiplayerState.room.current_slot_index !== 0) {
+  if (!canIssueTeamCommand()) {
     return;
   }
   const commandPoint = point || pickCommandPointFromCrosshair();
   setStatus(`队长指令：向 (${commandPoint.x.toFixed(1)}, ${commandPoint.z.toFixed(1)}) 集合并进攻。`);
   applyCaptainCommand(absoluteFriendlyTeam, commandPoint, multiplayerState.playerId);
-  sendRoomSocket('captain_command', { x: commandPoint.x, z: commandPoint.z, team: absoluteFriendlyTeam });
+  if (multiplayerState.active) {
+    sendRoomSocket('captain_command', { x: commandPoint.x, y: commandPoint.y || 0, z: commandPoint.z, team: absoluteFriendlyTeam });
+  }
 }
 
 function absoluteTeamForLocal(team) {
@@ -1391,6 +1541,7 @@ function createTower(x, z) {
       createBlock(x + 3, 9.5, z + dx, 1, 1, 1, materialSet.rail);
     }
     coverAnchors.push(new THREE.Vector3(x, 0, z));
+    highGroundPerches.push(new THREE.Vector3(x, 9, z));
 }
 
 function createHouseInteriorCover(x, z, width, depth, variant = 'default') {
@@ -1426,6 +1577,7 @@ function createHouseComplex(x, z, width, depth, height, options = {}) {
     createHouseInteriorCover(x, z, width, depth, options.interiorCover);
   }
   coverAnchors.push(new THREE.Vector3(x, 0, z));
+  highGroundPerches.push(new THREE.Vector3(x, height + 1, z));
 }
 
 function createStairRun(x, z, dirX, dirZ, steps) {
@@ -1460,6 +1612,8 @@ function createBridge(x, z, width, depth, height) {
   createBlock(x, height, z, width, 1, depth, materialSet.wall, true);
   createRailLine(x - width / 2 + 1, z - depth / 2 + 1, x + width / 2 - 1, z - depth / 2 + 1, height + 0.8);
   createRailLine(x - width / 2 + 1, z + depth / 2 - 1, x + width / 2 - 1, z + depth / 2 - 1, height + 0.8);
+  highGroundPerches.push(new THREE.Vector3(x - width * 0.22, height + 0.5, z));
+  highGroundPerches.push(new THREE.Vector3(x + width * 0.22, height + 0.5, z));
 }
 
 function createLadder(x, z, height, axis = 'z') {
@@ -1493,12 +1647,15 @@ function createArena() {
   mapGroup.clear();
   colliders.length = 0;
   coverAnchors.length = 0;
+  highGroundPerches.length = 0;
   ladderZones.length = 0;
   grenadeProjectiles.forEach((entry) => scene.remove(entry.mesh));
   grenadeBursts.forEach((entry) => scene.remove(entry.mesh));
   commandFlagProjectiles.forEach((entry) => scene.remove(entry.mesh));
   clearTeamFlagMarker(ABS_TEAM_RED);
   clearTeamFlagMarker(ABS_TEAM_BLUE);
+  clearTeamFocusMarker(ABS_TEAM_RED);
+  clearTeamFocusMarker(ABS_TEAM_BLUE);
   grenadeProjectiles.length = 0;
   grenadeBursts.length = 0;
   commandFlagProjectiles.length = 0;
@@ -1713,13 +1870,15 @@ const viewWeapon = createViewWeapon();
 function applyBotDifficulty(bot) {
   const enemy = bot.team === TEAM_ENEMY;
   bot.weapon = Math.random() > (enemy ? 0.58 : 0.68) ? 'voxel_sniper' : 'voxel_rifle';
-  bot.speed = (enemy ? 2.45 : 2.25) + Math.random() * (enemy ? 0.35 : 0.35);
+  bot.speed = (enemy ? 2.48 : 2.34) + Math.random() * 0.32;
   bot.preferredRange = bot.weapon === 'voxel_sniper' ? (enemy ? 18 : 24) : (enemy ? 8.6 : 8);
-  bot.reactionScale = enemy ? 0.98 + Math.random() * 0.14 : 1.02 + Math.random() * 0.16;
+  bot.reactionScale = enemy ? 0.96 + Math.random() * 0.14 : 0.99 + Math.random() * 0.16;
   bot.burstCap = enemy ? 2 : 3;
-  bot.pushBias = enemy ? 1.02 : 0.92;
+  bot.pushBias = enemy ? 1.08 : 1.01;
   bot.damageScale = enemy ? 0.88 : 1;
-  bot.coverRefresh = enemy ? 0.64 : 0.75;
+  bot.coverRefresh = enemy ? 0.6 : 0.68;
+  bot.openingBias = enemy ? 1.12 + Math.random() * 0.16 : 1.02 + Math.random() * 0.14;
+  bot.laneDiscipline = 0.58 + Math.random() * 0.18;
 }
 
 function makeBot(team, index, spawn, options = {}) {
@@ -1759,6 +1918,10 @@ function makeBot(team, index, spawn, options = {}) {
     pushBias: 1,
     damageScale: 1,
     coverRefresh: 0.7,
+    openingBias: 1,
+    laneDiscipline: 0.65,
+    formationSlot: Number(options.formationSlot ?? index),
+    perchTarget: null,
   };
   if (!bot.isHuman) {
     applyBotDifficulty(bot);
@@ -1769,23 +1932,31 @@ function makeBot(team, index, spawn, options = {}) {
 }
 
 function setPatrolTarget(bot) {
-  const anchor = coverAnchors[Math.floor(Math.random() * coverAnchors.length)] || new THREE.Vector3();
-  const sign = bot.team === TEAM_FRIENDLY ? 1 : -1;
-  bot.patrolTarget = new THREE.Vector3(anchor.x + (Math.random() - 0.5) * 3, 0, anchor.z + sign * (2 + Math.random() * 5));
+  const forwardSign = teamForwardSign(bot.absoluteTeam);
+  const offset = getBotFormationOffset(bot);
+  const anchor = chooseAssaultAnchor(bot) || new THREE.Vector3();
+  bot.patrolTarget = new THREE.Vector3(
+    anchor.x + offset.x * 0.18 + (Math.random() - 0.5) * 1.8,
+    0,
+    anchor.z + forwardSign * (1.8 + Math.random() * 3.2),
+  );
 }
 
-function chooseCoverPosition(bot, threatPosition) {
-  const sign = bot.team === TEAM_FRIENDLY ? 1 : -1;
-  const anchors = coverAnchors.filter((anchor) => (bot.team === TEAM_FRIENDLY ? anchor.z > -1 : anchor.z < 1));
+function chooseCoverPosition(bot, threatPosition, commandPoint = null) {
+  const sign = teamForwardSign(bot.absoluteTeam);
+  const anchors = coverAnchors.filter((anchor) => (bot.absoluteTeam === ABS_TEAM_RED ? anchor.z > -1 : anchor.z < 1));
   if (!anchors.length) {
     return null;
   }
+  const laneX = (commandPoint?.x ?? 0) + getBotFormationOffset(bot).x * bot.laneDiscipline;
   return anchors.reduce((best, anchor) => {
     const hidePos = anchor.clone().add(new THREE.Vector3(0, 0, sign * 1.8));
     const toThreat = hidePos.distanceTo(threatPosition);
     const toBot = bot.mesh.position.distanceTo(hidePos);
-    const pressureBonus = bot.team === TEAM_ENEMY ? Math.max(0, 16 - toThreat) * 0.55 : 0;
-    const score = toBot + toThreat * bot.coverRefresh - pressureBonus;
+    const lanePenalty = Math.abs(anchor.x - laneX) * 0.18;
+    const commandPenalty = commandPoint ? Math.abs(anchor.z - commandPoint.z) * 0.1 : 0;
+    const pressureBonus = Math.max(0, 18 - toThreat) * Math.max(0.1, bot.pushBias - 0.78);
+    const score = toBot + toThreat * bot.coverRefresh + lanePenalty + commandPenalty - pressureBonus;
     if (!best || score < best.score) {
       return { score, position: hidePos };
     }
@@ -1822,6 +1993,7 @@ function resetBots(config = null) {
             userId: human.user_id,
             label: `ID ${human.user_id}`,
             weapon: 'voxel_rifle',
+            formationSlot: human.slot_index,
           });
           remotePlayers.set(human.player_id, actor);
           botState.push(actor);
@@ -1839,7 +2011,7 @@ function resetBots(config = null) {
         if (occupiedSlots.has(slotIndex) || blocked.has(slotIndex)) {
           continue;
         }
-        const bot = makeBot(localTeam, slotIndex, spawnList[slotIndex], { absoluteTeam });
+        const bot = makeBot(localTeam, slotIndex, spawnList[slotIndex], { absoluteTeam, formationSlot: slotIndex });
         setPatrolTarget(bot);
         botState.push(bot);
       }
@@ -1852,12 +2024,12 @@ function resetBots(config = null) {
   }
 
   FRIEND_SPAWNS.forEach((spawn, index) => {
-    const bot = makeBot(TEAM_FRIENDLY, index, spawn, { absoluteTeam: ABS_TEAM_RED });
+    const bot = makeBot(TEAM_FRIENDLY, index, spawn, { absoluteTeam: ABS_TEAM_RED, formationSlot: index + 1 });
     setPatrolTarget(bot);
     botState.push(bot);
   });
   ENEMY_SPAWNS.forEach((spawn, index) => {
-    const bot = makeBot(TEAM_ENEMY, index, spawn, { absoluteTeam: ABS_TEAM_BLUE });
+    const bot = makeBot(TEAM_ENEMY, index, spawn, { absoluteTeam: ABS_TEAM_BLUE, formationSlot: index });
     setPatrolTarget(bot);
     botState.push(bot);
   });
@@ -1880,6 +2052,7 @@ function respawnBot(bot) {
   bot.respawnAt = 0;
   bot.cooldown = 400 + Math.random() * 800;
   bot.coverTarget = null;
+  bot.perchTarget = null;
   bot.burstLeft = 0;
   bot.hitTimer = 0;
   applyBotDifficulty(bot);
@@ -2042,6 +2215,212 @@ function resolveSafeSpawn(basePosition, height = PLAYER_HEIGHT, radius = PLAYER_
   return new THREE.Vector3(basePosition.x, height, basePosition.z);
 }
 
+function moveBotTowardPoint(bot, destination, stepAmount, options = {}) {
+  const elevatedTarget = Boolean(options.allowPerchHop) && (destination.y || 0) > 1.2;
+  const goal = clampBotInsideBounds(
+    elevatedTarget && bot.mesh.position.y < (destination.y || 0) - 1.1
+      ? resolveLadderApproach(destination)
+      : destination.clone(),
+  );
+  const desired = goal.sub(bot.mesh.position.clone());
+  desired.y = 0;
+  if (desired.lengthSq() < 0.0001) {
+    return false;
+  }
+  desired.normalize();
+  const right = new THREE.Vector3(-desired.z, 0, desired.x);
+  const attempts = [
+    desired.clone(),
+    desired.clone().addScaledVector(right, 0.85).normalize(),
+    desired.clone().addScaledVector(right, -0.85).normalize(),
+    right.clone(),
+    right.clone().multiplyScalar(-1),
+    new THREE.Vector3(desired.x, 0, 0).normalize(),
+    new THREE.Vector3(0, 0, desired.z).normalize(),
+  ].filter((candidate) => Number.isFinite(candidate.x) && Number.isFinite(candidate.z) && candidate.lengthSq() > 0.0001);
+
+  const allowPerchHop = Boolean(options.allowPerchHop);
+  const maxRise = allowPerchHop ? BOT_MAX_PERCH_STEP_UP : BOT_MAX_STEP_UP;
+
+  for (const candidate of attempts) {
+    const next = clampBotInsideBounds(bot.mesh.position.clone().addScaledVector(candidate, stepAmount));
+    const horizontalToGoal = Math.hypot(goal.x - next.x, goal.z - next.z);
+    const riseAllowance = allowPerchHop && horizontalToGoal < 3.6 ? maxRise : BOT_MAX_STEP_UP;
+    const nextGround = getHighestSurfaceAt(next.x, next.z, BOT_RADIUS, bot.mesh.position.y + riseAllowance + 0.2);
+    if (nextGround - bot.mesh.position.y > riseAllowance) {
+      continue;
+    }
+    const collisionProbe = new THREE.Vector3(next.x, nextGround + PLAYER_HEIGHT, next.z);
+    if (!collisionAt(collisionProbe, PLAYER_HEIGHT, BOT_RADIUS)) {
+      bot.mesh.position.x = next.x;
+      bot.mesh.position.z = next.z;
+      bot.mesh.position.y = nextGround;
+      return true;
+    }
+  }
+  return false;
+}
+
+function getTeamHumanLeader(team) {
+  if (team === absoluteFriendlyTeam && playerAlive) {
+    return {
+      type: 'local-player',
+      absoluteTeam: team,
+      x: playerObject.position.x,
+      y: playerObject.position.y,
+      z: playerObject.position.z,
+      yaw: playerObject.rotation.y,
+      weapon: currentWeapon,
+      alive: true,
+    };
+  }
+  const humans = [...remotePlayers.values()].filter((actor) => actor.alive && actor.absoluteTeam === team);
+  if (!humans.length) {
+    return null;
+  }
+  return humans.sort((left, right) => left.mesh.position.lengthSq() - right.mesh.position.lengthSq())[0];
+}
+
+function getLeaderFollowPoint(bot, leader) {
+  const offset = getBotFormationOffset(bot);
+  const yaw = leader.yaw ?? 0;
+  const forward = new THREE.Vector3(Math.sin(yaw), 0, Math.cos(yaw));
+  const right = new THREE.Vector3(forward.z, 0, -forward.x).normalize();
+  const behindDistance = bot.weapon === 'voxel_sniper' ? 7.2 : 4.8;
+  const leaderPosition = new THREE.Vector3(leader.x, leader.y || 0, leader.z);
+  let followPoint = leaderPosition
+    .clone()
+    .addScaledVector(right, offset.x * 0.28)
+    .addScaledVector(forward, -behindDistance - offset.z * 0.22);
+
+  if (leaderPosition.y > 2.5) {
+    const perch = highGroundPerches
+      .slice()
+      .sort((left, rightPos) => leaderPosition.distanceTo(left) - leaderPosition.distanceTo(rightPos))[0] || null;
+    if (perch) {
+      followPoint = perch.clone().addScaledVector(right, offset.x * 0.18);
+    }
+  }
+  return clampBotInsideBounds(followPoint);
+}
+
+function recordTeamCombatSignal(team, payload) {
+  teamCombatSignals[team] = {
+    weapon: payload.weapon,
+    targetPoint: payload.targetPoint ? { x: payload.targetPoint.x, y: payload.targetPoint.y || 0, z: payload.targetPoint.z } : null,
+    focusActorId: payload.focusActorId || null,
+    expiresAt: performance.now() + (payload.weapon === 'voxel_grenade' ? 1700 : 2400),
+    supportCount: 0,
+  };
+}
+
+function getActiveTeamCombatSignal(team) {
+  const signal = teamCombatSignals[team];
+  if (!signal) {
+    return null;
+  }
+  if (signal.expiresAt <= performance.now()) {
+    teamCombatSignals[team] = null;
+    return null;
+  }
+  return signal;
+}
+
+function updateTeamFocusMarkers(now) {
+  [ABS_TEAM_RED, ABS_TEAM_BLUE].forEach((team) => {
+    const signal = getActiveTeamCombatSignal(team);
+    if (!signal || (!signal.focusActorId && !signal.targetPoint)) {
+      clearTeamFocusMarker(team);
+      return;
+    }
+    const marker = ensureTeamFocusMarker(team);
+    let targetPosition = null;
+    if (signal.focusActorId) {
+      const actor = botState.find((entry) => entry.id === signal.focusActorId && entry.alive);
+      if (actor) {
+        targetPosition = getBotAimPoint(actor);
+      }
+    }
+    if (!targetPosition && signal.targetPoint) {
+      targetPosition = new THREE.Vector3(signal.targetPoint.x, (signal.targetPoint.y || 0) + 1.2, signal.targetPoint.z);
+    }
+    if (!targetPosition) {
+      clearTeamFocusMarker(team);
+      return;
+    }
+    marker.group.position.copy(targetPosition);
+    marker.ring.rotation.z = now * 0.0022;
+    marker.ring.material.opacity = 0.72 + Math.sin(now * 0.01) * 0.18;
+    marker.beacon.material.opacity = 0.48 + Math.sin(now * 0.008) * 0.16;
+  });
+}
+
+function findSignalTarget(bot, signal) {
+  if (!signal) {
+    return null;
+  }
+  if (signal.focusActorId) {
+    const actor = botState.find((entry) => entry.id === signal.focusActorId && entry.alive && entry.team !== bot.team);
+    if (actor) {
+      const aimPoint = getBotAimPoint(actor);
+      const distance = bot.mesh.position.distanceTo(aimPoint);
+      return {
+        type: 'bot',
+        bot: actor,
+        position: aimPoint,
+        distance,
+        priority: -3,
+      };
+    }
+  }
+  if (signal.targetPoint) {
+    const point = new THREE.Vector3(signal.targetPoint.x, signal.targetPoint.y || 0, signal.targetPoint.z);
+    return {
+      type: 'point',
+      position: point,
+      distance: bot.mesh.position.distanceTo(point),
+      priority: -2,
+    };
+  }
+  return null;
+}
+
+function triggerBotSupportGrenade(bot, signal) {
+  if (!signal || signal.weapon !== 'voxel_grenade' || !signal.targetPoint || signal.supportCount >= 2 || bot.cooldown > 0) {
+    return false;
+  }
+  const targetPoint = new THREE.Vector3(signal.targetPoint.x, signal.targetPoint.y || 0, signal.targetPoint.z);
+  if (bot.mesh.position.distanceTo(targetPoint) > 20) {
+    return false;
+  }
+  signal.supportCount += 1;
+  bot.cooldown = 1100 + Math.random() * 300;
+  createGrenadeBurst(targetPoint.clone());
+  botState.forEach((actor) => {
+    if (!actor.alive || actor.team === bot.team) {
+      return;
+    }
+    const distance = targetPoint.distanceTo(getBotAimPoint(actor));
+    if (distance > GRENADE_BLAST_RADIUS) {
+      return;
+    }
+    const damageRatio = 1 - distance / GRENADE_BLAST_RADIUS;
+    const damage = Math.max(18, Math.round(GRENADE_MAX_DAMAGE * 0.56 * damageRatio));
+    const killed = applyBotDamage(actor, damage, bot.team === TEAM_ENEMY ? '敌军 Bot 手雷' : '友军 Bot 手雷');
+    if (killed) {
+      recordKillForActor(bot.id, bot.absoluteTeam);
+    }
+  });
+  if (bot.team === TEAM_ENEMY && playerAlive) {
+    const distance = targetPoint.distanceTo(playerObject.position);
+    if (distance <= GRENADE_BLAST_RADIUS) {
+      const damageRatio = 1 - distance / GRENADE_BLAST_RADIUS;
+      applyDamage('player', Math.max(16, GRENADE_MAX_DAMAGE * 0.42 * damageRatio), '敌军 Bot 手雷');
+    }
+  }
+  return true;
+}
+
 function lineOfSight(from, to) {
   tempVecA.copy(to).sub(from);
   const distance = tempVecA.length();
@@ -2156,6 +2535,12 @@ function processRemoteFire(playerId, payload = {}) {
   }
   const weapon = WEAPON_CONFIG[payload.weapon] || WEAPON_CONFIG.voxel_rifle;
   if (payload.weapon === 'voxel_grenade') {
+    const origin = new THREE.Vector3(payload.origin?.x || actor.mesh.position.x, payload.origin?.y || 1.7, payload.origin?.z || actor.mesh.position.z);
+    const direction = new THREE.Vector3(payload.direction?.x || 0, payload.direction?.y || 0, payload.direction?.z || -1).normalize();
+    recordTeamCombatSignal(actor.absoluteTeam, {
+      weapon: 'voxel_grenade',
+      targetPoint: origin.addScaledVector(direction, 12),
+    });
     return;
   }
   const origin = new THREE.Vector3(payload.origin?.x || actor.mesh.position.x, payload.origin?.y || 1.7, payload.origin?.z || actor.mesh.position.z);
@@ -2164,6 +2549,11 @@ function processRemoteFire(playerId, payload = {}) {
   if (!target) {
     return;
   }
+  recordTeamCombatSignal(actor.absoluteTeam, {
+    weapon: payload.weapon,
+    targetPoint: target.type === 'player' ? playerObject.position.clone() : getBotAimPoint(target.actor),
+    focusActorId: target.type === 'actor' ? target.actor.id : null,
+  });
   if (target.type === 'player') {
     const wasAlive = playerAlive;
     applyDamage('player', weapon.damage, actor.label);
@@ -2402,6 +2792,19 @@ function playerShoot(now) {
 
   if (currentWeapon === 'voxel_grenade') {
     viewWeapon.userData.muzzle.visible = false;
+    if (multiplayerState.active && !multiplayerState.isHost) {
+      const direction = camera.getWorldDirection(new THREE.Vector3());
+      const origin = camera.getWorldPosition(new THREE.Vector3());
+      sendRoomSocket('player_fire', {
+        weapon: currentWeapon,
+        origin: { x: origin.x, y: origin.y, z: origin.z },
+        direction: { x: direction.x, y: direction.y, z: direction.z },
+      });
+    }
+    recordTeamCombatSignal(absoluteFriendlyTeam, {
+      weapon: 'voxel_grenade',
+      targetPoint: pickCommandPointFromCrosshair() || camera.getWorldPosition(new THREE.Vector3()).add(camera.getWorldDirection(new THREE.Vector3()).multiplyScalar(12)),
+    });
     throwGrenade();
     return;
   }
@@ -2437,6 +2840,11 @@ function playerShoot(now) {
   if (!bot) {
     return;
   }
+  recordTeamCombatSignal(absoluteFriendlyTeam, {
+    weapon: currentWeapon,
+    targetPoint: getBotAimPoint(bot),
+    focusActorId: bot.id,
+  });
   showHitMarker();
   applyBotDamage(bot, weapon.damage, '你', {
     playerCredit: true,
@@ -2526,48 +2934,58 @@ function updateBots(delta) {
     bot.hitTimer = Math.max(0, bot.hitTimer - delta);
     bot.strafeTimer -= delta;
 
+    const teamSignal = getActiveTeamCombatSignal(bot.absoluteTeam);
+    const teamLeader = getTeamHumanLeader(bot.absoluteTeam);
+    if (teamSignal && (teamSignal.weapon === 'voxel_rifle' || teamSignal.weapon === 'voxel_sniper')) {
+      bot.weapon = teamSignal.weapon;
+    }
+    if (triggerBotSupportGrenade(bot, teamSignal)) {
+      return;
+    }
+
     const activeCommand = multiplayerState.teamCommands[bot.absoluteTeam];
     if (activeCommand && activeCommand.expiresAt <= performance.now()) {
       multiplayerState.teamCommands[bot.absoluteTeam] = null;
     }
-    if (activeCommand && activeCommand.expiresAt > performance.now()) {
-      const commandPos = new THREE.Vector3(activeCommand.x, 0, activeCommand.z);
-      if (bot.mesh.position.distanceTo(commandPos) > 2.5) {
+    const signalTarget = findSignalTarget(bot, teamSignal);
+    const target = signalTarget?.type === 'bot' ? signalTarget : findTarget(bot);
+    if (activeCommand?.opening && (target || bot.hitTimer > 0)) {
+      multiplayerState.teamCommands[bot.absoluteTeam] = null;
+    }
+    if (activeCommand && activeCommand.expiresAt > performance.now() && !(activeCommand.opening && (target || bot.hitTimer > 0))) {
+      const commandPos = getCommandMoveTarget(bot, activeCommand);
+      const shouldHoldCommand = activeCommand.manual ? bot.mesh.position.distanceTo(commandPos) > 1.6 : (!target || target.distance > bot.preferredRange * 1.08);
+      if (shouldHoldCommand && bot.mesh.position.distanceTo(commandPos) > 2.5) {
         bot.state = 'command_move';
-        tempVecA.copy(commandPos).sub(bot.mesh.position);
-        tempVecA.y = 0;
-        if (tempVecA.lengthSq() > 0.01) {
-          tempVecA.normalize().multiplyScalar(bot.speed * delta * 0.00215);
-          tempVecB.copy(bot.mesh.position).add(tempVecA);
-          if (!playerCollision(tempVecB.clone().setY(PLAYER_HEIGHT))) {
-            bot.mesh.position.x = tempVecB.x;
-            bot.mesh.position.z = tempVecB.z;
-          }
-          bot.mesh.lookAt(commandPos.x, 0.9, commandPos.z);
+        if (bot.mesh.position.distanceTo(commandPos) > 0.01) {
+          moveBotTowardPoint(bot, commandPos, bot.speed * delta * 0.00225 * (activeCommand.manual ? 1.14 : bot.openingBias), { allowPerchHop: (commandPos.y || 0) > 1.2 });
+          bot.mesh.lookAt(commandPos.x, Math.max(0.9, (commandPos.y || 0) + 0.2), commandPos.z);
         }
         return;
       }
     }
 
-    const target = findTarget(bot);
+    if (!activeCommand?.manual && teamLeader && (!target || target.distance > bot.preferredRange * 0.82)) {
+      const followPoint = getLeaderFollowPoint(bot, teamLeader);
+      if (bot.mesh.position.distanceTo(followPoint) > (bot.weapon === 'voxel_sniper' ? 6.4 : 4.1)) {
+        bot.state = 'follow_leader';
+        moveBotTowardPoint(bot, followPoint, bot.speed * delta * 0.00145 * bot.pushBias, { allowPerchHop: followPoint.y > 1.2 || teamLeader.y > 1.2 });
+        bot.mesh.lookAt(teamLeader.x, Math.max(0.9, (teamLeader.y || 0) + 0.2), teamLeader.z);
+        return;
+      }
+    }
+
     if (target) {
       const threatPos = target.position.clone();
       const shouldRefreshCover = !bot.coverTarget || bot.mesh.position.distanceTo(bot.coverTarget) < 0.6 || bot.hitTimer > 60 || target.distance < bot.preferredRange * 0.72;
       if (shouldRefreshCover) {
-        bot.coverTarget = chooseCoverPosition(bot, threatPos);
+        const commandAnchor = activeCommand && activeCommand.expiresAt > performance.now() ? getCommandMoveTarget(bot, activeCommand) : null;
+        bot.coverTarget = chooseCoverPosition(bot, threatPos, commandAnchor);
       }
 
       if (bot.coverTarget && bot.mesh.position.distanceTo(bot.coverTarget) > 0.9) {
         bot.state = 'seek_cover';
-        tempVecA.copy(bot.coverTarget).sub(bot.mesh.position);
-        tempVecA.y = 0;
-        if (tempVecA.lengthSq() > 0.01) {
-          tempVecA.normalize().multiplyScalar(bot.speed * delta * 0.00125 * bot.pushBias);
-          tempVecB.copy(bot.mesh.position).add(tempVecA);
-          if (!playerCollision(tempVecB.clone().setY(PLAYER_HEIGHT))) {
-            bot.mesh.position.x = tempVecB.x;
-            bot.mesh.position.z = tempVecB.z;
-          }
+        if (moveBotTowardPoint(bot, bot.coverTarget, bot.speed * delta * 0.0014 * bot.pushBias)) {
           bot.mesh.lookAt(bot.coverTarget.x, 0.9, bot.coverTarget.z);
         }
         return;
@@ -2581,22 +2999,12 @@ function updateBots(delta) {
       }
       const botWeapon = WEAPON_CONFIG[bot.weapon] || WEAPON_CONFIG.voxel_rifle;
       const preferredRange = bot.preferredRange;
-      const retreatThreshold = preferredRange * 0.55;
-      const pushThreshold = preferredRange * 1.22;
+      const retreatThreshold = preferredRange * (bot.weapon === 'voxel_sniper' ? 0.66 : 0.42);
+      const pushThreshold = preferredRange * (bot.weapon === 'voxel_sniper' ? 1.18 : 1.02);
       if (target.distance > pushThreshold && !bot.coverTarget) {
-        tempVecA.normalize().multiplyScalar(bot.speed * delta * 0.0012 * bot.pushBias);
-        tempVecB.copy(bot.mesh.position).add(tempVecA);
-        if (!playerCollision(tempVecB.clone().setY(PLAYER_HEIGHT))) {
-          bot.mesh.position.x = tempVecB.x;
-          bot.mesh.position.z = tempVecB.z;
-        }
+        moveBotTowardPoint(bot, threatPos, bot.speed * delta * 0.00145 * bot.pushBias);
       } else if (target.distance < retreatThreshold) {
-        tempVecA.normalize().multiplyScalar(bot.speed * delta * 0.00095);
-        tempVecB.copy(bot.mesh.position).sub(tempVecA);
-        if (!playerCollision(tempVecB.clone().setY(PLAYER_HEIGHT))) {
-          bot.mesh.position.x = tempVecB.x;
-          bot.mesh.position.z = tempVecB.z;
-        }
+        moveBotTowardPoint(bot, bot.mesh.position.clone().sub(tempVecA.multiplyScalar(6)), bot.speed * delta * 0.001);
       }
 
       if (bot.strafeTimer <= 0) {
@@ -2604,11 +3012,7 @@ function updateBots(delta) {
         bot.strafeTimer = 260 + Math.random() * 520;
       }
       const right = new THREE.Vector3().crossVectors(tempVecA.normalize(), new THREE.Vector3(0, 1, 0)).normalize();
-      tempVecB.copy(bot.mesh.position).addScaledVector(right, bot.strafeDir * bot.speed * delta * (bot.coverTarget ? 0.00045 : 0.00058));
-      if (!playerCollision(tempVecB.clone().setY(PLAYER_HEIGHT))) {
-        bot.mesh.position.x = tempVecB.x;
-        bot.mesh.position.z = tempVecB.z;
-      }
+      moveBotTowardPoint(bot, bot.mesh.position.clone().addScaledVector(right, bot.strafeDir * 4.4), bot.speed * delta * (bot.coverTarget ? 0.00045 : 0.00058));
 
       if (bot.cooldown <= 0) {
         bot.cooldown = botWeapon.fireDelay * bot.reactionScale + Math.random() * (bot.team === TEAM_ENEMY ? 220 : 220);
@@ -2647,23 +3051,40 @@ function updateBots(delta) {
       return;
     }
 
+    if (signalTarget?.type === 'point') {
+      bot.state = 'support_push';
+      moveBotTowardPoint(bot, signalTarget.position, bot.speed * delta * 0.00135 * bot.pushBias, { allowPerchHop: signalTarget.position.y > 1.2 });
+      bot.mesh.lookAt(signalTarget.position.x, Math.max(0.9, signalTarget.position.y + 0.2), signalTarget.position.z);
+      return;
+    }
+
+    if (bot.weapon === 'voxel_sniper') {
+      if (!bot.perchTarget || bot.mesh.position.distanceTo(bot.perchTarget) < 1.4) {
+        bot.perchTarget = chooseSniperPerch(bot);
+      }
+      if (bot.perchTarget && bot.mesh.position.distanceTo(bot.perchTarget) > 1.4) {
+        bot.state = 'take_perch';
+        moveBotTowardPoint(bot, bot.perchTarget, bot.speed * delta * 0.00125 * bot.openingBias, { allowPerchHop: true });
+        bot.mesh.lookAt(bot.perchTarget.x, Math.max(0.9, bot.perchTarget.y + 0.2), bot.perchTarget.z);
+        return;
+      }
+      if (bot.perchTarget) {
+        const lookout = chooseAssaultAnchor(bot) || new THREE.Vector3(0, 0, bot.absoluteTeam === ABS_TEAM_RED ? -20 : 20);
+        bot.state = 'overwatch';
+        bot.mesh.lookAt(lookout.x, 1.1, lookout.z);
+        return;
+      }
+    }
+
     bot.state = 'patrol';
     bot.coverTarget = null;
     if (bot.mesh.position.distanceTo(bot.patrolTarget) < 0.8) {
       setPatrolTarget(bot);
     }
-    tempVecA.copy(bot.patrolTarget).sub(bot.mesh.position);
-    tempVecA.y = 0;
-    if (tempVecA.lengthSq() > 0.01) {
-      tempVecA.normalize().multiplyScalar(bot.speed * delta * 0.00085);
-      tempVecB.copy(bot.mesh.position).add(tempVecA);
-      if (!playerCollision(tempVecB.clone().setY(PLAYER_HEIGHT))) {
-        bot.mesh.position.x = tempVecB.x;
-        bot.mesh.position.z = tempVecB.z;
-        bot.mesh.lookAt(bot.patrolTarget.x, 0.9, bot.patrolTarget.z);
-      } else {
-        setPatrolTarget(bot);
-      }
+    if (moveBotTowardPoint(bot, bot.patrolTarget, bot.speed * delta * 0.00105 * bot.openingBias, { allowPerchHop: bot.weapon === 'voxel_sniper' })) {
+      bot.mesh.lookAt(bot.patrolTarget.x, Math.max(0.9, bot.patrolTarget.y + 0.2), bot.patrolTarget.z);
+    } else {
+      setPatrolTarget(bot);
     }
   });
 }
@@ -2979,6 +3400,7 @@ function resetRound() {
     playerObject.rotation.y = Math.PI;
   }
   applyScopeState(false, false);
+  teamCombatSignals = { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null };
   grenadeProjectiles.forEach((entry) => scene.remove(entry.mesh));
   grenadeBursts.forEach((entry) => {
     scene.remove(entry.mesh);
@@ -2998,6 +3420,7 @@ function resetRound() {
       [ABS_TEAM_BLUE]: multiplayerState.room.teams[ABS_TEAM_BLUE].filter((seat) => seat.seat_state === 'closed').map((seat) => seat.slot_index),
     },
   } : null);
+  seedOpeningTeamCommands();
   seedLocalPlayerStats();
   hitMarker.classList.remove('is-active');
   hitMarkerTimer = 0;
@@ -3050,6 +3473,7 @@ function animate(now) {
     updateMobileAutoFire(now);
     updateCommandFlagProjectiles(delta);
     updateCommandFlagMarkers();
+    updateTeamFocusMarkers(now);
     if (!multiplayerState.active || multiplayerState.isHost) {
       updateGrenadeProjectiles(delta);
       updateGrenadeBursts(now);
@@ -3378,7 +3802,7 @@ function handleKeyDown(event) {
   }
   if (event.code === 'Digit4') {
     event.preventDefault();
-    if (multiplayerState.active && multiplayerState.room?.current_slot_index === 0) {
+    if (canIssueTeamCommand()) {
       setWeapon('voxel_command_flag');
       setStatus('已切换到红旗，左键掷出后将引导本队 Bot 集结。');
     } else {
@@ -3512,6 +3936,10 @@ mobileWeaponButtons.forEach((button) => {
     event.preventDefault();
     const weapon = button.dataset.voxelMobileWeapon;
     if (!weapon) return;
+    if (weapon === 'voxel_command_flag' && !canIssueTeamCommand()) {
+      setStatus('只有红蓝队的真人队长可以使用红旗指挥。');
+      return;
+    }
     setWeapon(weapon);
   });
 });
