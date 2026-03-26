@@ -94,6 +94,7 @@ const PLAYER_HEIGHT_CROUCH = 1.15;
 const PLAYER_HEIGHT_PRONE = 0.72;
 const PLAYER_RADIUS = 0.35;
 const MAP_HALF = 52;
+const FULL_MAP_RANGE = Math.hypot(MAP_HALF * 2, MAP_HALF * 2) + 16;
 const PLAYER_RESPAWN_MS = 4500;
 const BOT_RESPAWN_MS = 5200;
 const BASE_FOV = 72;
@@ -103,7 +104,7 @@ const PLAYER_GROUND_EPSILON = 0.06;
 const PLAYER_BOUNDARY_MARGIN = 1.9;
 const LADDER_CLIMB_SPEED = 4.8;
 const LADDER_SLIDE_SPEED = -1.1;
-const GRENADE_THROW_SPEED = 12.5;
+const GRENADE_THROW_SPEED = 125;
 const GRENADE_BLAST_RADIUS = 8.4;
 const GRENADE_MAX_DAMAGE = 128;
 const GRENADE_BLAST_DURATION = 320;
@@ -118,7 +119,7 @@ const BOT_MAX_PERCH_STEP_UP = 9.8;
 const WEAPON_CONFIG = {
   voxel_rifle: {
     label: '长枪',
-    range: 18,
+    range: FULL_MAP_RANGE,
     damage: 34,
     fireDelay: 150,
     scopeEnabled: true,
@@ -128,7 +129,7 @@ const WEAPON_CONFIG = {
   },
   voxel_sniper: {
     label: '狙击枪',
-    range: 54,
+    range: FULL_MAP_RANGE,
     damage: 88,
     fireDelay: 720,
     scopeEnabled: true,
@@ -944,6 +945,9 @@ function handleRoomSocketMessage(data) {
     return;
   }
   if (data.type === 'match_started' && data.match) {
+    if (gameRunning && multiplayerState.active && matchPhase === 'running') {
+      return;
+    }
     startMultiplayerMatch(data.match);
     return;
   }
@@ -2449,6 +2453,17 @@ function getBotAimPoint(bot) {
   return bot.mesh.position.clone().add(new THREE.Vector3(0, 1.18, 0));
 }
 
+function faceBotTowards(bot, target) {
+  const dx = target.x - bot.mesh.position.x;
+  const dz = target.z - bot.mesh.position.z;
+  if (Math.abs(dx) < 0.0001 && Math.abs(dz) < 0.0001) {
+    return;
+  }
+  bot.mesh.rotation.y = Math.atan2(dx, dz);
+  bot.mesh.rotation.x = 0;
+  bot.mesh.rotation.z = 0;
+}
+
 function findClosestShootableEnemy() {
   const origin = camera.getWorldPosition(new THREE.Vector3());
   const weaponRange = WEAPON_CONFIG[currentWeapon]?.range ?? WEAPON_CONFIG.voxel_rifle.range;
@@ -2489,6 +2504,7 @@ function resolveBotFromHitObject(hitObject) {
 function getPlayerTargetHits() {
   scene.updateMatrixWorld(true);
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  raycaster.far = WEAPON_CONFIG[currentWeapon]?.range ?? FULL_MAP_RANGE;
   const worldMeshes = mapGroup.children.filter((mesh) => mesh.userData.blocksShots !== false);
   const worldHit = raycaster.intersectObjects(worldMeshes, false)[0] || null;
   const enemyMeshes = botState.filter((bot) => bot.alive && bot.team === TEAM_ENEMY).map((bot) => bot.mesh);
@@ -2551,7 +2567,7 @@ function processRemoteFire(playerId, payload = {}) {
     const direction = new THREE.Vector3(payload.direction?.x || 0, payload.direction?.y || 0, payload.direction?.z || -1).normalize();
     recordTeamCombatSignal(actor.absoluteTeam, {
       weapon: 'voxel_grenade',
-      targetPoint: origin.addScaledVector(direction, 12),
+      targetPoint: clampPointToArena(origin.addScaledVector(direction, GRENADE_THROW_SPEED * 0.9)),
     });
     return;
   }
@@ -2796,7 +2812,7 @@ function updateGrenadeBursts(now) {
 
 function playerShoot(now) {
   const weapon = WEAPON_CONFIG[currentWeapon];
-  if (!pointerLocked || !playerAlive || !gameRunning || now - lastPlayerShot < weapon.fireDelay) {
+  if ((!pointerLocked && !isMobileMode()) || !playerAlive || !gameRunning || now - lastPlayerShot < weapon.fireDelay) {
     return;
   }
   lastPlayerShot = now;
@@ -2971,7 +2987,7 @@ function updateBots(delta) {
         bot.state = 'command_move';
         if (bot.mesh.position.distanceTo(commandPos) > 0.01) {
           moveBotTowardPoint(bot, commandPos, bot.speed * delta * 0.00225 * (activeCommand.manual ? 1.14 : bot.openingBias), { allowPerchHop: (commandPos.y || 0) > 1.2 });
-          bot.mesh.lookAt(commandPos.x, Math.max(0.9, (commandPos.y || 0) + 0.2), commandPos.z);
+          faceBotTowards(bot, commandPos);
         }
         return;
       }
@@ -2982,7 +2998,7 @@ function updateBots(delta) {
       if (bot.mesh.position.distanceTo(followPoint) > (bot.weapon === 'voxel_sniper' ? 6.4 : 4.1)) {
         bot.state = 'follow_leader';
         moveBotTowardPoint(bot, followPoint, bot.speed * delta * 0.00145 * bot.pushBias, { allowPerchHop: followPoint.y > 1.2 || teamLeader.y > 1.2 });
-        bot.mesh.lookAt(teamLeader.x, Math.max(0.9, (teamLeader.y || 0) + 0.2), teamLeader.z);
+        faceBotTowards(bot, teamLeader);
         return;
       }
     }
@@ -2998,7 +3014,7 @@ function updateBots(delta) {
       if (bot.coverTarget && bot.mesh.position.distanceTo(bot.coverTarget) > 0.9) {
         bot.state = 'seek_cover';
         if (moveBotTowardPoint(bot, bot.coverTarget, bot.speed * delta * 0.0014 * bot.pushBias)) {
-          bot.mesh.lookAt(bot.coverTarget.x, 0.9, bot.coverTarget.z);
+          faceBotTowards(bot, bot.coverTarget);
         }
         return;
       }
@@ -3007,7 +3023,7 @@ function updateBots(delta) {
       tempVecA.copy(threatPos).sub(bot.mesh.position);
       tempVecA.y = 0;
       if (tempVecA.lengthSq() > 0.01) {
-        bot.mesh.lookAt(bot.mesh.position.x + tempVecA.x, 0.9, bot.mesh.position.z + tempVecA.z);
+        faceBotTowards(bot, bot.mesh.position.clone().add(tempVecA));
       }
       const botWeapon = WEAPON_CONFIG[bot.weapon] || WEAPON_CONFIG.voxel_rifle;
       const preferredRange = bot.preferredRange;
@@ -3066,7 +3082,7 @@ function updateBots(delta) {
     if (signalTarget?.type === 'point') {
       bot.state = 'support_push';
       moveBotTowardPoint(bot, signalTarget.position, bot.speed * delta * 0.00135 * bot.pushBias, { allowPerchHop: signalTarget.position.y > 1.2 });
-      bot.mesh.lookAt(signalTarget.position.x, Math.max(0.9, signalTarget.position.y + 0.2), signalTarget.position.z);
+      faceBotTowards(bot, signalTarget.position);
       return;
     }
 
@@ -3077,13 +3093,13 @@ function updateBots(delta) {
       if (bot.perchTarget && bot.mesh.position.distanceTo(bot.perchTarget) > 1.4) {
         bot.state = 'take_perch';
         moveBotTowardPoint(bot, bot.perchTarget, bot.speed * delta * 0.00125 * bot.openingBias, { allowPerchHop: true });
-        bot.mesh.lookAt(bot.perchTarget.x, Math.max(0.9, bot.perchTarget.y + 0.2), bot.perchTarget.z);
+        faceBotTowards(bot, bot.perchTarget);
         return;
       }
       if (bot.perchTarget) {
         const lookout = chooseAssaultAnchor(bot) || new THREE.Vector3(0, 0, bot.absoluteTeam === ABS_TEAM_RED ? -20 : 20);
         bot.state = 'overwatch';
-        bot.mesh.lookAt(lookout.x, 1.1, lookout.z);
+        faceBotTowards(bot, lookout);
         return;
       }
     }
@@ -3094,7 +3110,7 @@ function updateBots(delta) {
       setPatrolTarget(bot);
     }
     if (moveBotTowardPoint(bot, bot.patrolTarget, bot.speed * delta * 0.00105 * bot.openingBias, { allowPerchHop: bot.weapon === 'voxel_sniper' })) {
-      bot.mesh.lookAt(bot.patrolTarget.x, Math.max(0.9, bot.patrolTarget.y + 0.2), bot.patrolTarget.z);
+      faceBotTowards(bot, bot.patrolTarget);
     } else {
       setPatrolTarget(bot);
     }
@@ -3595,8 +3611,12 @@ controls.addEventListener('lock', () => {
   setStatus('已锁定鼠标，开始战斗。');
 });
 controls.addEventListener('unlock', () => {
+  const hadLock = pointerLocked;
   pointerLocked = false;
   clearMovementState();
+  if (!hadLock) {
+    return;
+  }
   if (gameRunning && !gameEnded && playerAlive && !respawnOverlay.hidden) {
     return;
   }
