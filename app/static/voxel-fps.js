@@ -1284,7 +1284,7 @@ function chooseSniperPerch(bot) {
     })[Math.floor(Math.random() * Math.min(4, pool.length))] || null;
 }
 
-function resolveLadderApproach(destination) {
+function resolveLadderApproach(destination, botPosition = null) {
   if ((destination.y || 0) <= 1.2 || !ladderZones.length) {
     return destination.clone();
   }
@@ -1298,7 +1298,10 @@ function resolveLadderApproach(destination) {
   if (!ladder) {
     return destination.clone();
   }
-  return new THREE.Vector3(ladder.x, 0, ladder.z);
+  if (botPosition && Math.hypot(ladder.x - botPosition.x, ladder.z - botPosition.z) < 1.2) {
+    return destination.clone();
+  }
+  return new THREE.Vector3(ladder.x, destination.y || 0, ladder.z);
 }
 
 function issueCaptainCommand(point = null) {
@@ -2101,7 +2104,7 @@ function playerCollision(nextPosition) {
 }
 
 function collisionAt(position, height = PLAYER_HEIGHT, radius = PLAYER_RADIUS) {
-  collisionBox.min.set(position.x - radius, position.y - height, position.z - radius);
+  collisionBox.min.set(position.x - radius, position.y - height + PLAYER_GROUND_EPSILON, position.z - radius);
   collisionBox.max.set(position.x + radius, position.y + 0.1, position.z + radius);
   return colliders.some((box) => scratchBox.copy(box).intersectsBox(collisionBox));
 }
@@ -2219,7 +2222,7 @@ function moveBotTowardPoint(bot, destination, stepAmount, options = {}) {
   const elevatedTarget = Boolean(options.allowPerchHop) && (destination.y || 0) > 1.2;
   const goal = clampBotInsideBounds(
     elevatedTarget && bot.mesh.position.y < (destination.y || 0) - 1.1
-      ? resolveLadderApproach(destination)
+      ? resolveLadderApproach(destination, bot.mesh.position)
       : destination.clone(),
   );
   const desired = goal.sub(bot.mesh.position.clone());
@@ -2364,12 +2367,21 @@ function findSignalTarget(bot, signal) {
     if (actor) {
       const aimPoint = getBotAimPoint(actor);
       const distance = bot.mesh.position.distanceTo(aimPoint);
+      const hasLOS = lineOfSight(bot.mesh.position.clone().add(new THREE.Vector3(0, 1.2, 0)), aimPoint);
+      if (hasLOS) {
+        return {
+          type: 'bot',
+          bot: actor,
+          position: aimPoint,
+          distance,
+          priority: -3,
+        };
+      }
       return {
-        type: 'bot',
-        bot: actor,
+        type: 'point',
         position: aimPoint,
         distance,
-        priority: -3,
+        priority: -2,
       };
     }
   }

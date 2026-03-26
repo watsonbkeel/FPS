@@ -51,6 +51,7 @@ def test_bot_ai_adds_opening_and_lane_parameters() -> None:
     assert "function chooseAssaultAnchor(bot)" in source
     assert "function moveBotTowardPoint(bot, destination, stepAmount, options = {})" in source
     assert "const BOT_MAX_PERCH_STEP_UP = 9.8;" in source
+    assert "position.y - height + PLAYER_GROUND_EPSILON" in source
 
 
 def test_command_flag_selection_respects_singleplayer_or_captain_rules() -> None:
@@ -79,6 +80,8 @@ def test_team_combat_signal_supports_follow_and_focus_fire() -> None:
     assert "function getLeaderFollowPoint(bot, leader)" in source
     assert "function recordTeamCombatSignal(team, payload)" in source
     assert "function findSignalTarget(bot, signal)" in source
+    assert "const hasLOS = lineOfSight(bot.mesh.position.clone().add(new THREE.Vector3(0, 1.2, 0)), aimPoint);" in source
+    assert "type: 'point'" in source
     assert "if (teamSignal && (teamSignal.weapon === 'voxel_rifle' || teamSignal.weapon === 'voxel_sniper')) {" in source
     assert "bot.state = 'follow_leader';" in source
     assert "recordTeamCombatSignal(absoluteFriendlyTeam, {" in source
@@ -92,3 +95,12 @@ def test_focus_marker_visualizes_team_focus_target() -> None:
     assert "function updateTeamFocusMarkers(now)" in source
     assert "updateTeamFocusMarkers(now);" in source
     assert "clearTeamFocusMarker(ABS_TEAM_RED);" in source
+
+
+def test_ladder_approach_keeps_height_and_releases_at_ladder_base() -> None:
+    source = _read_source()
+
+    assert "function resolveLadderApproach(destination, botPosition = null)" in source
+    assert "Math.hypot(ladder.x - botPosition.x, ladder.z - botPosition.z) < 1.2" in source
+    assert "return new THREE.Vector3(ladder.x, destination.y || 0, ladder.z);" in source
+    assert "? resolveLadderApproach(destination, bot.mesh.position)" in source
