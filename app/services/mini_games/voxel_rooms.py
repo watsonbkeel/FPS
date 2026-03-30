@@ -542,10 +542,7 @@ class VoxelRoomService:
             if message_type == "captain_command" and not is_captain:
                 return
             forward = {"type": message_type, "player_id": player_id, "payload": payload.get("payload", {})}
-            if message_type == "host_snapshot":
-                await self.broadcast_payload(room_id, forward, exclude=[player_id])
-            else:
-                await self.broadcast_payload(room_id, forward, exclude=[])
+            await self.broadcast_payload(room_id, forward, exclude=[player_id])
             return
 
         if message_type == "request_room_state":
@@ -562,18 +559,25 @@ class VoxelRoomService:
         exclude_set = set(exclude or [])
         with self._lock:
             connections = list(self._connections.get(room_id, {}).items())
+
+        try:
+            payload_str = json.dumps(payload, ensure_ascii=False)
+        except Exception:
+            return
+
         for player_id, websocket in connections:
             if targets is not None and player_id not in targets:
                 continue
             if player_id in exclude_set:
                 continue
-            await self._safe_send(websocket, payload)
+            await self._safe_send(websocket, payload_str)
 
-    async def _safe_send(self, websocket: WebSocket, payload: dict[str, Any]) -> None:
+    async def _safe_send(self, websocket: WebSocket, payload: dict[str, Any] | str) -> None:
         if websocket.client_state != WebSocketState.CONNECTED:
             return
         try:
-            await websocket.send_text(json.dumps(payload, ensure_ascii=False))
+            text = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+            await websocket.send_text(text)
         except Exception:
             return
 
