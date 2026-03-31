@@ -296,6 +296,7 @@ let multiplayerState = {
   claimSent: false,
   claimCompleted: false,
   latestRemaining: ROUND_DURATION,
+  lastRespawnTime: 0,
   teamCommands: { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null },
 };
 
@@ -532,6 +533,7 @@ function resetMultiplayerLobbyState(clearStorage = true) {
   multiplayerState.claimCompleted = false;
   multiplayerState.active = false;
   multiplayerState.latestRemaining = ROUND_DURATION;
+  multiplayerState.lastRespawnTime = 0;
   teamCombatSignals = { [ABS_TEAM_RED]: null, [ABS_TEAM_BLUE]: null };
   if (clearStorage) {
     clearRoomSession();
@@ -783,8 +785,19 @@ function applyHostSnapshot(snapshot) {
   if (Array.isArray(snapshot.humans)) {
     snapshot.humans.forEach((human) => {
       if (human.player_id === multiplayerState.playerId) {
-        playerHealth = human.health;
-        playerAlive = human.alive;
+        const recentlyRespawned = (performance.now() - (multiplayerState.lastRespawnTime || 0)) < 2500;
+        if (!recentlyRespawned) {
+          if (playerAlive && !human.alive) {
+            applyDamage('player', playerHealth, '战区火力');
+          } else if (playerAlive && human.alive) {
+            if (human.health < playerHealth) {
+              showHitMarker();
+              damageFlashTimer = 220;
+              damageScreen?.classList.add('is-active');
+            }
+            playerHealth = human.health;
+          }
+        }
         playerKills = human.kills || playerKills;
         killsEl.textContent = String(playerKills);
         const localStat = actorStats.get('local-player');
@@ -3422,6 +3435,7 @@ function resetRound() {
   playerStance = 'stand';
   playerHeight = PLAYER_HEIGHT;
   respawnTimer = 0;
+  multiplayerState.lastRespawnTime = 0;
   playerVelocity.set(0, 0, 0);
   resetPlayerView(true);
   if (absoluteFriendlyTeam === ABS_TEAM_BLUE) {
@@ -3485,6 +3499,7 @@ function respawnPlayer() {
   if (!gameEnded) {
     gamePaused = false;
   }
+  multiplayerState.lastRespawnTime = performance.now();
 }
 
 function animate(now) {
