@@ -678,15 +678,26 @@ function roomWebSocketUrl(roomId, playerId) {
   return `${scheme}://${window.location.host}${relative}?player_id=${encodeURIComponent(playerId)}`;
 }
 
+// 【合并修复 1】为远程玩家加入 targetPosition 用于 Lerp 平滑插值
 function applyRemoteActorState(playerId, state) {
   const actor = remotePlayers.get(playerId);
   if (!actor) return;
-  actor.mesh.position.set(state.x, state.y, state.z);
+
+  // 使用 userData 存储目标位置，避免直接 set 导致的瞬间卡顿闪烁
+  actor.mesh.userData.targetPosition = new THREE.Vector3(state.x, state.y, state.z);
+  actor.mesh.visible = true;
   actor.mesh.rotation.y = state.yaw;
+
   actor.hp = state.health;
   actor.alive = state.alive;
   actor.weapon = state.weapon;
   actor.state = state.alive ? 'remote' : 'dead';
+  if (state.alive) {
+    actor.deadAt = 0;
+    actor.respawnAt = 0;
+    actor.hitTimer = 0;
+    actor.mesh.userData.deadTilt = 0;
+  }
   actor.userId = state.user_id || actor.userId;
   actor.label = state.user_id ? humanDisplayLabel(state.user_id, state.label || actor.label) : (state.label || actor.label);
   actor.absoluteTeam = state.team || actor.absoluteTeam;
@@ -814,11 +825,13 @@ function applyHostSnapshot(snapshot) {
       applyRemoteActorState(human.player_id, human);
     });
   }
+  
+  // 【合并修复 1】为客户端同步 Bot 时加入 targetPosition 供平滑移动使用
   if (Array.isArray(snapshot.bots)) {
     snapshot.bots.forEach((botSnapshot) => {
       const bot = botState.find((entry) => entry.id === botSnapshot.id && !entry.isHuman);
       if (!bot) return;
-      bot.mesh.position.set(botSnapshot.x, botSnapshot.y, botSnapshot.z);
+      bot.mesh.userData.targetPosition = new THREE.Vector3(botSnapshot.x, botSnapshot.y, botSnapshot.z);
       bot.mesh.rotation.y = botSnapshot.yaw;
       bot.hp = botSnapshot.health;
       bot.alive = botSnapshot.alive;
@@ -964,7 +977,7 @@ function handleRoomSocketMessage(data) {
     startMultiplayerMatch(data.match);
     return;
   }
-  if (data.type === 'player_state' && data.player_id && data.player_id !== multiplayerState.playerId) {
+  if ((data.type === 'player_state' || data.type === 'player_respawn') && data.player_id && data.player_id !== multiplayerState.playerId) {
     applyRemoteActorState(data.player_id, data.payload || {});
     return;
   }
@@ -1498,6 +1511,18 @@ function showHitMarker() {
   hitMarkerTimer = 120;
 }
 
+// 【合并修复 2】封装销毁函数，为后续动态沙盒或重复生成地图防御内存溢出
+function disposeMesh(mesh) {
+  if (mesh.geometry) mesh.geometry.dispose();
+  if (mesh.material) {
+    if (Array.isArray(mesh.material)) {
+      mesh.material.forEach(m => m.dispose());
+    } else {
+      mesh.material.dispose();
+    }
+  }
+}
+
 function createBlock(x, y, z, w, h, d, material, collider = true) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
   mesh.position.set(x, y, z);
@@ -1664,13 +1689,19 @@ function createLadder(x, z, height, axis = 'z') {
 }
 
 function createArena() {
+  // 【合并修复 2】释放旧地图资源的显存占用
+  mapGroup.children.forEach(disposeMesh);
   mapGroup.clear();
+  
   colliders.length = 0;
   coverAnchors.length = 0;
   highGroundPerches.length = 0;
   ladderZones.length = 0;
   grenadeProjectiles.forEach((entry) => scene.remove(entry.mesh));
-  grenadeBursts.forEach((entry) => scene.remove(entry.mesh));
+  grenadeBursts.forEach((entry) => {
+    scene.remove(entry.mesh);
+    disposeMesh(entry.mesh);
+  });
   commandFlagProjectiles.forEach((entry) => scene.remove(entry.mesh));
   clearTeamFlagMarker(ABS_TEAM_RED);
   clearTeamFlagMarker(ABS_TEAM_BLUE);
@@ -2087,11 +2118,17 @@ function teamAliveCount(team) {
   return count;
 }
 
+// 【合并修复 3】修复非房主玩家被死锁的 Bug：正确统计包含真人代理在内的待复活人数，防止被误判团灭
 function teamRespawnPending(team) {
   let count = !playerAlive && team === TEAM_FRIENDLY && respawnTimer > 0 ? 1 : 0;
   botState.forEach((bot) => {
-    if (bot.isHuman) return;
-    if (bot.team === team && !bot.alive && bot.respawnAt > performance.now()) count += 1;
+    if (bot.team === team && !bot.alive) {
+      if (bot.isHuman) {
+        count += 1;
+      } else if (bot.respawnAt > performance.now()) {
+        count += 1;
+      }
+    }
   });
   return count;
 }
@@ -2814,7 +2851,7 @@ function updateGrenadeBursts(now) {
     const progress = age / GRENADE_BLAST_DURATION;
     if (progress >= 1) {
       scene.remove(burst.mesh);
-      burst.mesh.material.dispose();
+      disposeMesh(burst.mesh);
       grenadeBursts.splice(i, 1);
       continue;
     }
@@ -3446,7 +3483,7 @@ function resetRound() {
   grenadeProjectiles.forEach((entry) => scene.remove(entry.mesh));
   grenadeBursts.forEach((entry) => {
     scene.remove(entry.mesh);
-    entry.mesh.material.dispose();
+    disposeMesh(entry.mesh);
   });
   commandFlagProjectiles.forEach((entry) => scene.remove(entry.mesh));
   clearTeamFlagMarker(ABS_TEAM_RED);
@@ -3500,9 +3537,13 @@ function respawnPlayer() {
     gamePaused = false;
   }
   multiplayerState.lastRespawnTime = performance.now();
+  if (multiplayerState.active) {
+    sendRoomSocket('player_respawn', buildLocalPlayerState());
+  }
 }
 
 function animate(now) {
+  // 原有的 delta 计算（Max 限定 0.05 秒）已天然防御了切后台导致的物理穿模，非常安全
   const delta = Math.min(0.05, (now - lastFrame) / 1000 || 0);
   lastFrame = now;
 
@@ -3545,6 +3586,22 @@ function animate(now) {
 
     syncMultiplayerState(now, remaining);
     updateHud(remaining);
+
+    // 【合并修复 1 补充】在每帧渲染中加入对目标位置 (targetPosition) 的平滑过渡 (Lerp)，解决低频网络包带来的移动卡顿感
+    if (multiplayerState.active) {
+      remotePlayers.forEach((actor) => {
+        if (actor.mesh.userData.targetPosition) {
+          actor.mesh.position.lerp(actor.mesh.userData.targetPosition, 0.2);
+        }
+      });
+      if (!multiplayerState.isHost) {
+        botState.forEach((bot) => {
+          if (!bot.isHuman && bot.mesh.userData.targetPosition) {
+            bot.mesh.position.lerp(bot.mesh.userData.targetPosition, 0.2);
+          }
+        });
+      }
+    }
 
     if (
       (!multiplayerState.active || multiplayerState.isHost) &&

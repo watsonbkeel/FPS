@@ -47,3 +47,34 @@ def test_player_shoot_allows_mobile_without_pointer_lock() -> None:
     source = _read_source()
 
     assert "if ((!pointerLocked && !isMobileMode()) || !playerAlive || !gameRunning || now - lastPlayerShot < weapon.fireDelay) {" in source
+
+
+def test_room_socket_applies_explicit_player_respawn_updates() -> None:
+    source = _read_source()
+    handler_start = source.index('function handleRoomSocketMessage(data) {')
+    handler_end = source.index('async function restoreSavedRoomSession()', handler_start)
+    handler_block = source[handler_start:handler_end]
+
+    assert "data.type === 'player_state' || data.type === 'player_respawn'" in handler_block
+    assert 'applyRemoteActorState(data.player_id, data.payload || {});' in handler_block
+
+
+def test_respawn_player_notifies_room_after_multiplayer_respawn() -> None:
+    source = _read_source()
+    respawn_start = source.index('function respawnPlayer() {')
+    respawn_end = source.index('function animate(now) {', respawn_start)
+    respawn_block = source[respawn_start:respawn_end]
+
+    assert "if (multiplayerState.active) {" in respawn_block
+    assert "sendRoomSocket('player_respawn', buildLocalPlayerState());" in respawn_block
+
+
+def test_remote_actor_state_clears_dead_flags_on_respawn_sync() -> None:
+    source = _read_source()
+    remote_start = source.index('function applyRemoteActorState(playerId, state) {')
+    remote_end = source.index('function buildLocalPlayerState()', remote_start)
+    remote_block = source[remote_start:remote_end]
+
+    assert 'actor.mesh.visible = true;' in remote_block
+    assert 'actor.deadAt = 0;' in remote_block
+    assert 'actor.respawnAt = 0;' in remote_block
