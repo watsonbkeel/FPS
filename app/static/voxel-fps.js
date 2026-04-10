@@ -427,6 +427,9 @@ const materialSet = {
   rail: new THREE.MeshStandardMaterial({ color: '#bfa680', flatShading: true }),
   blue: new THREE.MeshStandardMaterial({ color: '#4a74c9', flatShading: true }),
   red: new THREE.MeshStandardMaterial({ color: '#c65050', flatShading: true }),
+  helmetBlue: new THREE.MeshStandardMaterial({ color: '#2d4f9c', flatShading: true }),
+  helmetRed: new THREE.MeshStandardMaterial({ color: '#9a3f3f', flatShading: true }),
+  visor: new THREE.MeshStandardMaterial({ color: '#dce6f7', flatShading: true, transparent: true, opacity: 0.88 }),
   skin: new THREE.MeshStandardMaterial({ color: '#f1c897', flatShading: true }),
   gun: new THREE.MeshStandardMaterial({ color: '#30353c', flatShading: true }),
   muzzle: new THREE.MeshBasicMaterial({ color: '#ffcb66' }),
@@ -1799,9 +1802,10 @@ function createArena() {
   });
 }
 
-function makeVoxelHumanoid(team, isPlayer = false) {
+function makeVoxelHumanoid(team, options = {}) {
   const root = new THREE.Group();
-  const bodyMat = team === TEAM_FRIENDLY ? materialSet.blue : materialSet.red;
+  const resolvedAbsoluteTeam = options.absoluteTeam || absoluteTeamForLocal(team);
+  const bodyMat = resolvedAbsoluteTeam === ABS_TEAM_BLUE ? materialSet.blue : materialSet.red;
 
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), materialSet.skin);
   head.position.set(0, 1.5, 0);
@@ -1843,9 +1847,34 @@ function makeVoxelHumanoid(team, isPlayer = false) {
   muzzle.visible = false;
   gun.add(muzzle);
 
+  if (options.isHuman) {
+    const helmetMat = resolvedAbsoluteTeam === ABS_TEAM_BLUE ? materialSet.helmetBlue : materialSet.helmetRed;
+    const helmetTop = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.2, 0.58), helmetMat);
+    helmetTop.position.set(0, 1.76, 0);
+    const helmetFront = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.08, 0.16), helmetMat);
+    helmetFront.position.set(0, 1.63, 0.2);
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.14, 0.06), materialSet.visor);
+    visor.position.set(0, 1.58, 0.27);
+    root.add(helmetTop, helmetFront, visor);
+  }
+
   root.add(head, body, armL, armR, legL, legR, gun);
   root.castShadow = true;
-  root.userData = { head, body, armL, armR, legL, legR, gun, muzzle, scope, team, isPlayer };
+  root.userData = {
+    head,
+    body,
+    armL,
+    armR,
+    legL,
+    legR,
+    gun,
+    muzzle,
+    scope,
+    team,
+    absoluteTeam: resolvedAbsoluteTeam,
+    isHuman: Boolean(options.isHuman),
+    isPlayer: Boolean(options.isPlayer),
+  };
   return root;
 }
 
@@ -1933,7 +1962,10 @@ function applyBotDifficulty(bot) {
 }
 
 function makeBot(team, index, spawn, options = {}) {
-  const mesh = makeVoxelHumanoid(team);
+  const mesh = makeVoxelHumanoid(team, {
+    absoluteTeam: options.absoluteTeam,
+    isHuman: Boolean(options.isHuman),
+  });
   const safeSpawn = resolveSafeSpawn(spawn, PLAYER_HEIGHT, PLAYER_RADIUS * 0.9);
   mesh.position.copy(safeSpawn);
   mesh.position.y = 0;
@@ -2612,17 +2644,20 @@ function processRemoteFire(playerId, payload = {}) {
     return;
   }
   const weapon = WEAPON_CONFIG[payload.weapon] || WEAPON_CONFIG.voxel_rifle;
+  const origin = new THREE.Vector3(payload.origin?.x || actor.mesh.position.x, payload.origin?.y || 1.7, payload.origin?.z || actor.mesh.position.z);
+  const direction = new THREE.Vector3(payload.direction?.x || 0, payload.direction?.y || 0, payload.direction?.z || -1).normalize();
   if (payload.weapon === 'voxel_grenade') {
-    const origin = new THREE.Vector3(payload.origin?.x || actor.mesh.position.x, payload.origin?.y || 1.7, payload.origin?.z || actor.mesh.position.z);
-    const direction = new THREE.Vector3(payload.direction?.x || 0, payload.direction?.y || 0, payload.direction?.z || -1).normalize();
     recordTeamCombatSignal(actor.absoluteTeam, {
       weapon: 'voxel_grenade',
-      targetPoint: clampPointToArena(origin.addScaledVector(direction, GRENADE_THROW_SPEED * 0.9)),
+      targetPoint: clampPointToArena(origin.clone().addScaledVector(direction, GRENADE_THROW_SPEED * 0.9)),
+    });
+    spawnGrenadeProjectile(origin, direction, {
+      ownerAbsoluteTeam: actor.absoluteTeam,
+      attackerName: `${actor.label} 的手雷`,
+      creditActorId: actor.id,
     });
     return;
   }
-  const origin = new THREE.Vector3(payload.origin?.x || actor.mesh.position.x, payload.origin?.y || 1.7, payload.origin?.z || actor.mesh.position.z);
-  const direction = new THREE.Vector3(payload.direction?.x || 0, payload.direction?.y || 0, payload.direction?.z || -1);
   const target = resolveTargetFromRay(origin, direction, actor.team, weapon);
   if (!target) {
     return;
@@ -2682,6 +2717,10 @@ function applyDamage(target, amount, attackerName) {
   setStatus(`中枪！生命降到 ${playerHealth.toFixed(1)}`);
   if (playerHealth <= 0) {
     playerAlive = false;
+    const localStat = actorStats.get('local-player');
+    if (localStat) {
+      localStat.deaths += 1;
+    }
     camera.rotation.z = -0.45;
     camera.rotation.x = Math.max(camera.rotation.x, 0.25);
     playerObject.position.y = PLAYER_HEIGHT_CROUCH;
@@ -2734,34 +2773,62 @@ function createGrenadeBurst(position) {
   grenadeBursts.push({ mesh, startedAt: performance.now() });
 }
 
+function registerGrenadeKill(projectile) {
+  if (projectile.creditActorId === 'local-player') {
+    playerKills += 1;
+    killsEl.textContent = String(playerKills);
+  }
+  if (projectile.creditActorId) {
+    recordKillForActor(projectile.creditActorId, projectile.ownerAbsoluteTeam);
+  }
+}
+
 function explodeGrenade(projectile) {
   scene.remove(projectile.mesh);
   createGrenadeBurst(projectile.mesh.position.clone());
   let hits = 0;
-  botState.forEach((bot) => {
-    if (bot.team !== TEAM_ENEMY || !bot.alive) return;
-    const aimPoint = getBotAimPoint(bot);
+  botState.forEach((actor) => {
+    if (!actor.alive || actor.absoluteTeam === projectile.ownerAbsoluteTeam) return;
+    const aimPoint = getBotAimPoint(actor);
     const distance = projectile.mesh.position.distanceTo(aimPoint);
     if (distance > GRENADE_BLAST_RADIUS) return;
     const damageRatio = 1 - distance / GRENADE_BLAST_RADIUS;
     const damage = Math.max(20, Math.round(GRENADE_MAX_DAMAGE * damageRatio));
     hits += 1;
-    applyBotDamage(bot, damage, '你的手雷', { playerCredit: true, hitDuration: 280 });
+    const killed = applyBotDamage(actor, damage, projectile.attackerName, { hitDuration: 280 });
+    if (killed) {
+      registerGrenadeKill(projectile);
+    }
   });
-  if (hits > 0) {
+
+  if (playerAlive && absoluteFriendlyTeam !== projectile.ownerAbsoluteTeam) {
+    const distance = projectile.mesh.position.distanceTo(playerObject.position);
+    if (distance <= GRENADE_BLAST_RADIUS) {
+      const damageRatio = 1 - distance / GRENADE_BLAST_RADIUS;
+      const damage = Math.max(20, Math.round(GRENADE_MAX_DAMAGE * damageRatio));
+      const wasAlive = playerAlive;
+      hits += 1;
+      applyDamage('player', damage, projectile.attackerName);
+      if (wasAlive && !playerAlive) {
+        registerGrenadeKill(projectile);
+      }
+    }
+  }
+
+  if (projectile.creditActorId === 'local-player' && hits > 0) {
     showHitMarker();
     setStatus(`手雷爆炸，波及 ${hits} 个敌人。`);
-  } else {
+  } else if (projectile.creditActorId === 'local-player') {
     setStatus('手雷爆炸，但没有命中敌人。');
   }
 }
 
-function throwGrenade() {
-  const direction = camera.getWorldDirection(new THREE.Vector3());
-  const spawn = camera.getWorldPosition(new THREE.Vector3())
-    .add(direction.clone().multiplyScalar(0.85))
+function spawnGrenadeProjectile(origin, direction, options = {}) {
+  const launchDirection = direction.clone().normalize();
+  const spawn = origin.clone()
+    .add(launchDirection.clone().multiplyScalar(0.85))
     .add(new THREE.Vector3(0, -0.15, 0));
-  const velocity = direction.multiplyScalar(GRENADE_THROW_SPEED);
+  const velocity = launchDirection.multiplyScalar(GRENADE_THROW_SPEED);
   velocity.y += 4.5;
 
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(0.18, 10, 10), materialSet.wallDark);
@@ -2772,6 +2839,19 @@ function throwGrenade() {
   grenadeProjectiles.push({
     mesh,
     velocity,
+    attackerName: options.attackerName || '你的手雷',
+    ownerAbsoluteTeam: options.ownerAbsoluteTeam || absoluteFriendlyTeam,
+    creditActorId: options.creditActorId || null,
+  });
+}
+
+function throwGrenade() {
+  const direction = camera.getWorldDirection(new THREE.Vector3());
+  const origin = camera.getWorldPosition(new THREE.Vector3());
+  spawnGrenadeProjectile(origin, direction, {
+    attackerName: '你的手雷',
+    ownerAbsoluteTeam: absoluteFriendlyTeam,
+    creditActorId: 'local-player',
   });
   setStatus('手雷已掷出，落地后会爆炸。');
 }
@@ -2878,6 +2958,8 @@ function playerShoot(now) {
         origin: { x: origin.x, y: origin.y, z: origin.z },
         direction: { x: direction.x, y: direction.y, z: direction.z },
       });
+      setStatus('手雷已投出，房主正在同步弹道。');
+      return;
     }
     recordTeamCombatSignal(absoluteFriendlyTeam, {
       weapon: 'voxel_grenade',
